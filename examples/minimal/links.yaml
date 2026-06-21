@@ -1,0 +1,31 @@
+# Routable links for the example site. Each key is a label the page_classifier
+# may emit; the server maps it to a link result for the widget. `purpose` is fed
+# into the classifier spec; `label`/`description` show in the widget. `kind:
+# feedback` opens the feedback form instead of navigating.
+
+cv:
+  url: "https://example.com/robin-park-cv.pdf"
+  name: "CV"
+  label: "Curriculum Vitae (PDF)"
+  description: "Robin's CV"
+  purpose: "The visitor wants Robin's CV, resume, or curriculum vitae."
+
+github:
+  url: "https://github.com/example/robin"
+  name: "GitHub"
+  label: "GitHub"
+  description: "github.com/example/robin"
+  purpose: "The visitor wants Robin's code or GitHub profile."
+
+contact:
+  url: "mailto:robin@example.com"
+  name: "email"
+  label: "Email Robin"
+  description: "robin@example.com"
+  purpose: "The visitor wants to contact, email, or reach Robin."
+
+feedback:
+  kind: feedback
+  label: "Send feedback"
+  description: "Leave an anonymous message"
+  purpose: "The visitor wants to leave feedback, a suggestion, or report a problem."

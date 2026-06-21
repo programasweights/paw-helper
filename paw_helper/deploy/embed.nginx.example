@@ -1,0 +1,35 @@
+# Embedding the paw-helper widget on a site you DON'T statically control
+# (e.g. neural-os.com, a Gradio app proxied by nginx).
+#
+# A static site can just add the <script> tag to its HTML. For a proxied app whose
+# HTML you can't edit, inject the tag with nginx `sub_filter` on the upstream HTML.
+#
+# Add INSIDE the `location` block that proxies the app. Key points:
+#   - `proxy_set_header Accept-Encoding "";`  -> ask upstream for uncompressed HTML
+#     so sub_filter can actually see and rewrite the body (gzip would hide it).
+#   - `sub_filter_once on;`                   -> replace only the first </body>.
+#   - `sub_filter_types text/html;`           -> never touch JS/CSS/JSON responses.
+#
+# data-page tags this site for the router; data-endpoint points at the shared backend.
+
+location / {
+    proxy_pass http://127.0.0.1:7861;          # <-- the local app (e.g. Gradio)
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # --- websocket support (Gradio needs this) ---
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+
+    # --- inject the helper widget ---
+    proxy_set_header Accept-Encoding "";
+    sub_filter_once on;
+    sub_filter_types text/html;
+    sub_filter '</body>'
+        '<script src="https://helper.yuntiandeng.com/widget.js" data-page="site:neuralos"></script></body>';
+}
+
+# After editing:  sudo nginx -t && sudo systemctl reload nginx
+# Verify:        curl -s https://neural-os.com/ | grep widget.js

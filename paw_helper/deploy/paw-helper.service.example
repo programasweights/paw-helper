@@ -1,0 +1,32 @@
+# systemd unit for a paw-helper inference service.
+# Install:
+#   sudo cp paw-helper.service.example /etc/systemd/system/paw-helper.service
+#   (edit the paths/origins below)
+#   sudo systemctl daemon-reload && sudo systemctl enable --now paw-helper
+[Unit]
+Description=paw-helper inference service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Your content pack: config.yaml, specs/, programs.json, providers.py, links, facts.
+Environment=PAW_HELPER_CONTENT=/opt/paw-helper/content
+# CORS allow-list for the DATA endpoints (/ask,/feedback,/health), comma-separated.
+# Each site that embeds the widget goes here. /widget.js itself is public.
+Environment=HELPER_ALLOWED_ORIGINS=https://example.com,https://www.example.com
+# Logs (default: inside the content dir). Keep these private.
+Environment=HELPER_QUERY_LOG=/var/lib/paw-helper/queries.jsonl
+Environment=HELPER_FEEDBACK_LOG=/var/lib/paw-helper/feedback.jsonl
+# PAW model cache (persists across restarts) and optional API key.
+Environment=PAW_CACHE_DIR=/var/lib/paw-helper/paw-cache
+# Environment=PAW_API_KEY=paw_sk_...
+ExecStart=/opt/paw-helper/venv/bin/paw-helper serve --host 127.0.0.1 --port 8088
+Restart=on-failure
+RestartSec=3
+# Run as an unprivileged user that can read the content and write the cache/logs.
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target

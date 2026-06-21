@@ -1,0 +1,10 @@
+Decide whether the Answer is a relevant, on-topic reply to the Question. Return ONLY "yes" or "no".
+
+Input: Q: where is your cv A: Robin works on machine learning.
+Output: no
+
+Input: Q: what do you work on A: Robin works on on-device language models.
+Output: yes
+
+Input: Q: where are you based A: I don't have that information.
+Output: yes

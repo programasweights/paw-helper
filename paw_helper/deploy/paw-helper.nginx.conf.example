@@ -1,0 +1,26 @@
+# nginx vhost: helper.example.com -> the local paw-helper service (port 8088).
+# Install:
+#   sudo cp paw-helper.nginx.conf.example /etc/nginx/sites-available/helper.example.com
+#   sudo ln -s /etc/nginx/sites-available/helper.example.com /etc/nginx/sites-enabled/
+#   sudo nginx -t && sudo systemctl reload nginx
+#   sudo certbot --nginx -d helper.example.com   # adds the :443 block + redirect
+#
+# CORS is handled by the app (HELPER_ALLOWED_ORIGINS), so nginx adds no CORS headers.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name helper.example.com;
+
+    client_max_body_size 16k;   # small JSON requests only
+
+    location / {
+        proxy_pass http://127.0.0.1:8088;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # The first /ask after a restart may load the base model; allow headroom.
+        proxy_read_timeout 60s;
+    }
+}
