@@ -4,6 +4,15 @@ All notable changes to paw-helper are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/). The content-pack contract has its own
 `schema_version` (currently 1), bumped independently of the package version.
 
+## [0.1.1] - 2026-06-22
+
+### Added
+- `/widget.js` serves a content pack's own `widget.js` (at the pack root) when
+  present, overriding the packaged default - so a deployment can ship its own
+  labels, contact, and presets.
+- The packaged default widget is now generic and configurable via script
+  attributes: `data-name` (owner/site name) and `data-email` (fallback contact).
+
 ## [0.1.0] - 2026-06-21
 
 Initial extraction from the yuntiandeng.com / neural-os.com helper.

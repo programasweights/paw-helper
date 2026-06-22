@@ -66,8 +66,12 @@ def widget_js() -> FileResponse:
     # Public, embeddable JS: a <script src> load is not CORS-gated, but we mark it
     # Access-Control-Allow-Origin:* so any site can also fetch/inspect it. The
     # data endpoints (/ask,/feedback,/health) stay restricted to the allow-list.
+    # A content pack may ship its own widget.js (its own labels/email/presets); if
+    # present it overrides the packaged default.
+    override = common.CONTENT_DIR / "widget.js"
+    path = override if override.exists() else (STATIC_DIR / "widget.js")
     return FileResponse(
-        STATIC_DIR / "widget.js",
+        path,
         media_type="application/javascript",
         headers={
             "Access-Control-Allow-Origin": "*",

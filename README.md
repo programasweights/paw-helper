@@ -79,6 +79,17 @@ See [examples/minimal](examples/minimal) for a complete, valid pack.
 you don't control (e.g. a proxied app), inject the script with nginx `sub_filter`
 - see [paw_helper/deploy/embed.nginx.example](paw_helper/deploy/embed.nginx.example).
 
+The default widget takes optional `data-name` and `data-email` for labels and the
+fallback contact:
+
+```html
+<script src="https://helper.example.com/widget.js"
+        data-page="site" data-name="Ada Lovelace" data-email="ada@example.com"></script>
+```
+
+To fully customize copy/presets, drop a `widget.js` at your content pack root; the
+server serves it in place of the default.
+
 ## Deploy and rollback
 
 Templates are in [paw_helper/deploy/](paw_helper/deploy): a systemd unit and an

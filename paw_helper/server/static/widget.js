@@ -34,8 +34,11 @@
 
   var ENDPOINT = (ds.endpoint || scriptOrigin() || '').replace(/\/$/, '');
   var PAGE = ds.page || 'site';
-  var IS_COURSE = /^course/.test(PAGE);
-  var IS_NEURALOS = /neuralos/.test(PAGE);
+  // Optional labels/contact for a generic deployment. A content pack that ships
+  // its own widget.js (served in place of this one) can hardcode richer copy.
+  var NAME = ds.name || '';                       // e.g. data-name="Ada Lovelace"
+  var EMAIL = ds.email || '';                     // e.g. data-email="ada@example.com"
+  var ASK_LABEL = NAME ? ('Ask about ' + NAME) : 'Ask';
 
   if (document.getElementById('paw-helper-host')) return; // never double-inject
 
@@ -147,19 +150,19 @@
 
   // --- Markup (ported from _includes/helper.html, Liquid removed). ---
   var HTML = [
-    '<button type="button" class="paw-helper__launch" aria-label="Ask about Yuntian" aria-haspopup="dialog" aria-expanded="false">',
+    '<button type="button" class="paw-helper__launch" aria-label="Ask" aria-haspopup="dialog" aria-expanded="false">',
     '  <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">',
     '    <path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 17 0z"></path>',
     '  </svg>',
     '  <span class="paw-helper__launch-label">Ask</span>',
     '</button>',
     '<div class="paw-helper__overlay" hidden></div>',
-    '<div class="paw-helper__dialog" role="dialog" aria-modal="true" aria-label="Ask about Yuntian" hidden>',
+    '<div class="paw-helper__dialog" role="dialog" aria-modal="true" aria-label="Ask" hidden>',
     '  <form class="paw-helper__bar" autocomplete="off">',
     '    <svg class="paw-helper__search" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">',
     '      <circle cx="11" cy="11" r="7"></circle><path d="m21 21-4.3-4.3"></path>',
     '    </svg>',
-    '    <input type="text" class="paw-helper__input" placeholder="Ask about Yuntian, or what you\u2019re looking for\u2026" aria-label="Ask about Yuntian">',
+    '    <input type="text" class="paw-helper__input" placeholder="Ask a question\u2026" aria-label="Ask">',
     '    <span class="paw-helper__spinner" hidden aria-hidden="true"></span>',
     '    <button type="button" class="paw-helper__close" aria-label="Close">',
     '      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>',
@@ -255,12 +258,7 @@
 
     function renderQuickLinks() {
       results.innerHTML = '';
-      var tip = 'Try: \u201cwhere is your CV\u201d, \u201cwhat are you working on\u201d, or \u201care you taking students?\u201d';
-      if (IS_COURSE) {
-        tip = 'Try: \u201cwhen is the next assignment due\u201d, \u201chow is the course graded\u201d, or \u201cwhere do I post questions?\u201d';
-      } else if (IS_NEURALOS) {
-        tip = 'Try: \u201cwhat is this\u201d, \u201chow do I use it\u201d, or \u201cwhere is the code?\u201d';
-      }
+      var tip = NAME ? ('Ask anything about ' + NAME + '.') : 'Ask a question, or search for what you need.';
       results.appendChild(el('p', 'paw-helper__placeholder', tip));
     }
 
@@ -319,10 +317,12 @@
       clearResults();
       var d = el('div', 'paw-helper__result paw-helper__result--none');
       d.appendChild(el('span', null, "I'm not sure about that. You can "));
-      var mail = el('a', null, 'email Yuntian');
-      mail.href = 'mailto:yuntian@uwaterloo.ca';
-      d.appendChild(mail);
-      d.appendChild(el('span', null, ' or '));
+      if (EMAIL) {
+        var mail = el('a', null, 'email' + (NAME ? ' ' + NAME : ''));
+        mail.href = 'mailto:' + EMAIL;
+        d.appendChild(mail);
+        d.appendChild(el('span', null, ' or '));
+      }
       var fb = el('button', 'paw-helper__inline-btn', 'leave feedback');
       fb.type = 'button';
       fb.addEventListener('click', renderFeedbackForm);
@@ -400,12 +400,11 @@
       });
     }
 
-    if (IS_COURSE) {
-      input.placeholder = 'Ask about CS 486/686 (deadlines, grading, slides)\u2026';
-      launch.setAttribute('aria-label', 'Ask about CS 486/686');
-    } else if (IS_NEURALOS) {
-      input.placeholder = 'Ask about NeuralOS (what it is, how to use it, the code)\u2026';
-      launch.setAttribute('aria-label', 'Ask about NeuralOS');
+    if (NAME) {
+      input.placeholder = 'Ask about ' + NAME + '\u2026';
+      input.setAttribute('aria-label', ASK_LABEL);
+      launch.setAttribute('aria-label', ASK_LABEL);
+      dialog.setAttribute('aria-label', ASK_LABEL);
     }
 
     launch.addEventListener('click', openDialog);
