@@ -1,4 +1,4 @@
-"""FastAPI inference service for the yuntiandeng.com "Ask about Yuntian" helper.
+"""FastAPI service for a paw-helper content pack.
 
 Runs the 3-program PAW pipeline server-side and exposes a single high-level
 /ask endpoint to the browser widget, plus /feedback and /health.
@@ -9,12 +9,18 @@ Pipeline:
   3. if "question"     -> answerer(query) -> validator("Q: .. A: ..")
                           -> yes: return the answer; no/empty: fallback
 
-All PAW inference runs locally via the SDK. Inference is serialized with a lock
-(one shared model instance; low-traffic personal site).
+PAW calls are delegated to the configured inference backend. The default is the
+local SDK runtime for self-hosted installs; Yuntian's shared backend can set
+PAW_HELPER_INFERENCE_BACKEND=remote_infer to use the central PAW `/api/v1/infer`
+endpoint.
 
 Env:
   HELPER_ALLOWED_ORIGINS  comma-separated CORS origins
                           (default: https://yuntiandeng.com,https://www.yuntiandeng.com)
+  PAW_HELPER_INFERENCE_BACKEND
+                          local_sdk (default) or remote_infer
+  PAW_HELPER_INFER_ENDPOINT
+                          optional full URL for remote_infer
   HELPER_FEEDBACK_LOG     path to append feedback JSONL
                           (default: <helper>/feedback.jsonl)
   HELPER_QUERY_LOG        path to append per-question JSONL for review
@@ -166,4 +172,9 @@ def health() -> dict:
     # like the benchmark rubric grader); the widget shows this count.
     tools = set(PIPE.cfg.get("tools", []))
     n_serving = sum(1 for name in PROGRAMS if name not in tools)
-    return {"status": "ok", "programs": PROGRAMS, "n_serving": n_serving}
+    return {
+        "status": "ok",
+        "programs": PROGRAMS,
+        "n_serving": n_serving,
+        "inference_backend": PIPE.inference_backend.__class__.__name__,
+    }

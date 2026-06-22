@@ -129,6 +129,44 @@ The model-dependent gates (compiling, the eval suite, and a golden-snapshot diff
 that proves a change does not alter responses) run where the PAW API and your
 programs are available - they are your release gate, not part of offline CI.
 
+### Inference Backend
+
+By default the server runs pinned program IDs through the local PAW SDK runtime:
+
+```bash
+PAW_HELPER_INFERENCE_BACKEND=local_sdk paw-helper serve --content mypack
+```
+
+For a shared backend that should use the central PAW inference service, run:
+
+```bash
+PAW_HELPER_INFERENCE_BACKEND=remote_infer \
+PAW_HELPER_INFER_ENDPOINT=https://programasweights.com/api/v1/infer \
+paw-helper serve --content mypack
+```
+
+Both modes use the same `Pipeline`, logs, and eval harness; only the PAW call
+transport changes.
+
+### Reviewing Real Traffic
+
+The server appends one JSON object per `/ask` to `queries.jsonl`. Use `review` to
+find fallbacks and frequent questions, and `ingest` to print exact-deduped queries
+for manual benchmark curation:
+
+```bash
+paw-helper review --content mypack /path/to/queries.jsonl \
+  --feedback /path/to/feedback.jsonl \
+  --origin https://programasweights.com
+
+paw-helper ingest --content mypack /path/to/queries.jsonl \
+  --origin https://programasweights.com --batch 20
+```
+
+`ingest` only collapses exact case-insensitive duplicates. Prefixes,
+near-duplicates, intent grouping, labels, and rubrics are deliberately manual
+eyeballing steps.
+
 ## License
 
 MIT - see [LICENSE](LICENSE).

@@ -3,6 +3,9 @@
     paw-helper validate [--content DIR]            check a content pack (fail fast)
     paw-helper compile  [--content DIR] [--compiler X] [--only ...] [--all]
     paw-helper serve    [--content DIR] [--host H] [--port P]
+    paw-helper review   [queries.jsonl] [--feedback feedback.jsonl] [--origin O] [--page P]
+    paw-helper ingest   [queries.jsonl] [--origin O] [--page P]
+    paw-helper grader-eval [bench/grader_meta.yaml]
     paw-helper version
 
 --content defaults to $PAW_HELPER_CONTENT, else the current directory.
@@ -57,6 +60,45 @@ def _cmd_version(args) -> int:
     return 0
 
 
+def _default_log_path(name: str) -> str:
+    return str(common.CONTENT_DIR / name)
+
+
+def _cmd_review(args) -> int:
+    from . import logs
+
+    content = _resolve_content(args.content)
+    queries_path = pathlib.Path(args.queries or _default_log_path("queries.jsonl"))
+    feedback_path = pathlib.Path(args.feedback or _default_log_path("feedback.jsonl"))
+    rows = logs.filtered(logs.load_jsonl(queries_path), origin=args.origin, page=args.page)
+    feedback_rows = logs.filtered(logs.load_jsonl(feedback_path), origin=args.origin, page=args.page)
+    print(logs.review_text(rows, feedback_rows, top=args.top, source=str(queries_path)))
+    if args.origin or args.page:
+        print(f"\nFilter: content={content} origin={args.origin or '*'} page={args.page or '*'}")
+    return 0
+
+
+def _cmd_ingest(args) -> int:
+    from . import logs
+
+    content = _resolve_content(args.content)
+    queries_path = pathlib.Path(args.queries or _default_log_path("queries.jsonl"))
+    rows = logs.filtered(logs.load_jsonl(queries_path), origin=args.origin, page=args.page)
+    print(logs.ingest_text(rows, batch=args.batch))
+    if args.origin or args.page:
+        print(f"\n# Filter: content={content} origin={args.origin or '*'} page={args.page or '*'}")
+    return 0
+
+
+def _cmd_grader_eval(args) -> int:
+    from . import grader_eval
+
+    _resolve_content(args.content)
+    meta = pathlib.Path(args.meta) if args.meta else None
+    print(grader_eval.run(meta))
+    return 0
+
+
 def main(argv=None) -> int:
     # Shared --content, accepted before OR after the subcommand.
     parent = argparse.ArgumentParser(add_help=False)
@@ -78,6 +120,22 @@ def main(argv=None) -> int:
     ps.add_argument("--host", default="127.0.0.1")
     ps.add_argument("--port", type=int, default=8088)
 
+    pr = sub.add_parser("review", parents=[parent], help="Review query/feedback JSONL logs.")
+    pr.add_argument("queries", nargs="?", default=None)
+    pr.add_argument("--feedback", default=None)
+    pr.add_argument("--origin", default=None, help="Only include rows from this HTTP Origin.")
+    pr.add_argument("--page", default=None, help="Only include rows with this page key.")
+    pr.add_argument("--top", type=int, default=20)
+
+    pi = sub.add_parser("ingest", parents=[parent], help="Print exact-deduped queries for manual curation.")
+    pi.add_argument("queries", nargs="?", default=None)
+    pi.add_argument("--origin", default=None, help="Only include rows from this HTTP Origin.")
+    pi.add_argument("--page", default=None, help="Only include rows with this page key.")
+    pi.add_argument("--batch", type=int, default=20)
+
+    pg = sub.add_parser("grader-eval", parents=[parent], help="Validate rubric_checker against gold triples.")
+    pg.add_argument("meta", nargs="?", default=None, help="Path to grader_meta.yaml (default: bench/grader_meta.yaml).")
+
     sub.add_parser("version", parents=[parent], help="Print the framework version.")
 
     args = ap.parse_args(argv)
@@ -85,6 +143,9 @@ def main(argv=None) -> int:
         "validate": _cmd_validate,
         "compile": _cmd_compile,
         "serve": _cmd_serve,
+        "review": _cmd_review,
+        "ingest": _cmd_ingest,
+        "grader-eval": _cmd_grader_eval,
         "version": _cmd_version,
     }[args.cmd](args)
 

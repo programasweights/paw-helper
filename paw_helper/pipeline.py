@@ -14,12 +14,19 @@ Keeping one executor for both the server and the benchmark means they can never
 score differently from what ships.
 """
 
-import threading
+import logging
 import time
 
 import yaml
 
-from . import common
+from . import common, inference
+
+log = logging.getLogger("paw_helper")
+
+# Conservative chars-per-token estimate used only to derive a safe input cap from
+# the token budget. Intentionally on the high side so the cap stays comfortably
+# under the real context window.
+_CHARS_PER_TOKEN = 4
 
 
 def load_config(path=None) -> dict:
@@ -53,7 +60,12 @@ def _is_decline(answer: str) -> bool:
 
 
 class Pipeline:
-    def __init__(self, programs: dict | None = None, config: dict | None = None):
+    def __init__(
+        self,
+        programs: dict | None = None,
+        config: dict | None = None,
+        inference_backend: inference.InferenceBackend | None = None,
+    ):
         self.cfg = config or load_config()
         self.programs = programs if programs is not None else common.load_programs()["programs"]
         self.mt = self.cfg["max_tokens"]
@@ -72,23 +84,31 @@ class Pipeline:
             d for d, spec in self.cfg["domains"].items()
             if spec["classifier"] in self.programs and spec["answerer"] in self.programs
         ]
-        self._fns: dict[str, object] = {}
-        self._lock = threading.Lock()
+        self.inference_backend = inference_backend or inference.get_backend(self.programs)
         self.timings: list[tuple[str, float]] = []  # (node, seconds); eval reads/clears
 
     # --- inference ---------------------------------------------------------
-    def _fn(self, name: str):
-        import programasweights as paw
-        if name not in self._fns:
-            self._fns[name] = paw.function(self.programs[name])
-        return self._fns[name]
+    def _cap_input(self, name: str, text: str, max_tokens: int) -> str:
+        """Cap the input so input+output fit the shared context window, reserving
+        room for the output. Unlike a bare `text[:N]`, this is budget-derived and
+        WARNS when it actually truncates, so an over-large injected facts slice (or
+        a huge user query) is surfaced instead of silently losing its tail."""
+        budget = self.cfg.get("token_budget", 2048)
+        char_cap = max(0, (budget - int(max_tokens)) * _CHARS_PER_TOKEN)
+        if len(text) > char_cap:
+            log.warning(
+                "paw_helper.input_truncated program=%s input_chars=%d cap_chars=%d "
+                "(shrink the injected facts slice or raise token_budget)",
+                name, len(text), char_cap,
+            )
+            return text[:char_cap]
+        return text
 
     def _infer(self, name: str, text: str, max_tokens: int) -> str:
-        """Serialized, error-swallowing inference. Returns "" on any failure."""
+        """Error-swallowing inference. Returns "" on any backend failure."""
         t = time.time()
         try:
-            with self._lock:
-                out = self._fn(name)(text[:4000], max_tokens=max_tokens, temperature=0.0).strip()
+            out = self.inference_backend.infer(name, self._cap_input(name, text, max_tokens), max_tokens)
         except Exception:
             out = ""
         self.timings.append((name, time.time() - t))
@@ -144,8 +164,12 @@ class Pipeline:
 
         tr = spec.get("topic_router")
         if tr and tr in self.programs:
+            # Take the first token and strip surrounding quotes/punctuation. Small
+            # compilers (esp. the fast compiler) often emit `"install"` / `compile.`;
+            # without this the topic never matches and EVERY question silently falls
+            # back to the flat answerer, defeating the hierarchy.
             raw = self._infer(tr, query, self.mt["router"]).strip().lower().split()
-            topic = raw[0] if raw else ""
+            topic = raw[0].strip("\"'.") if raw else ""
             sub = spec.get("topics", {}).get(topic)
             if isinstance(sub, dict) and sub.get("answerer") in self.programs:
                 answerer_name, sub_provider = sub["answerer"], sub.get("context")
@@ -165,6 +189,15 @@ class Pipeline:
             verdict = self._infer(self.cfg["validator"], f"Q: {query} A: {answer}", self.mt["validator"]).lower()
         return answer, verdict
 
+    @staticmethod
+    def _resource_item_view(it: dict, rr: dict) -> dict:
+        """Render one resource item for the result. A provider may supply its own
+        `label`/`description` (generic case, e.g. code repos); otherwise fall back
+        to the legacy slide shape (`num`/`topic` -> "L{num}: {topic}")."""
+        label = it.get("label") or f"L{it['num']}: {it['topic']}"
+        return {"label": label, "url": it["url"],
+                "description": it.get("description") or rr.get("item_description", "")}
+
     def resource_items(self, rr: dict, query: str) -> list[dict]:
         """Rule+fuzzy resource lookup: inject candidate list, run the fuzzy selector,
         let the provider turn its output into items."""
@@ -174,10 +207,28 @@ class Pipeline:
                           self.mt.get("selector", 16))
         return select(raw)[: rr.get("max_items", 4)]
 
+    def _apply_redundancy(self, domain: str, query: str, label: str) -> str:
+        """Optional, config-declared classifier safety net. If the classifier picks
+        a `from` label but the query clearly signals a stronger `to` label (keyword
+        evidence), prefer `to`. This is deterministic redundancy for clusters the
+        small classifier is shaky on (e.g. bare "python sdk" -> code), NOT a
+        replacement for the model. Each rule:
+            {to, from: [...], any_keywords: [...], unless_keywords: [...]}
+        """
+        q = query.lower()
+        for r in self.cfg["domains"][domain].get("classifier_redundancy", []):
+            if label not in r.get("from", []):
+                continue
+            if any(k in q for k in r.get("unless_keywords", [])):
+                continue
+            if any(k in q for k in r.get("any_keywords", [])):
+                return r["to"]
+        return label
+
     # --- per-domain classify -> resource | link | answer -> validate -------
     def _run_domain(self, domain: str, query: str) -> dict:
         links = self.links[domain]
-        label = self.classify(domain, query)
+        label = self._apply_redundancy(domain, query, self.classify(domain, query))
 
         # Hierarchical resource router (e.g. course/slides -> specific decks).
         rr = self.resource_routers.get((domain, label))
@@ -185,8 +236,7 @@ class Pipeline:
             items = self.resource_items(rr, query)
             if items:
                 res = {"type": "links", "label": rr.get("result_label", "Links"),
-                       "items": [{"label": f"L{it['num']}: {it['topic']}", "url": it["url"],
-                                  "description": rr.get("item_description", "")} for it in items]}
+                       "items": [self._resource_item_view(it, rr) for it in items]}
                 return {"result": res, "domain": domain, "route": label, "verdict": None}
             # No match -> fall through to the plain link (fallback, e.g. the schedule).
 

@@ -20,6 +20,7 @@ def test_health_and_widget(booted_pack, monkeypatch):
     assert body["status"] == "ok"
     assert "page_classifier" in body["programs"]
     assert body["n_serving"] == 3  # no offline tools in this pack
+    assert body["inference_backend"] == "LocalSdkBackend"
 
     widget = client.get("/widget.js")
     assert widget.status_code == 200

@@ -77,10 +77,13 @@ model call.
 
 ## Request flow (server)
 
-`server/app.py` builds one shared `Pipeline(content_dir)` (one model instance,
-inference serialized). `/ask` runs the pipeline and logs the query + HTTP `Origin`
-(which site embedded the widget) for the review loop. `/feedback` appends to a log.
-`/widget.js` serves the embeddable widget (public; data endpoints are CORS-gated).
+`server/app.py` builds one shared `Pipeline(content_dir)`. PAW calls go through a
+configurable inference backend: `local_sdk` for self-hosted installs that run the
+SDK in-process, or `remote_infer` for deployments that should call a central
+`/api/v1/infer` endpoint. `/ask` runs the pipeline and logs the query + HTTP
+`Origin` (which site embedded the widget) for the review loop. `/feedback` appends
+to a log. `/widget.js` serves the embeddable widget (public; data endpoints are
+CORS-gated).
 
 ## Behavior preservation
 

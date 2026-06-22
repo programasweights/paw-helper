@@ -125,18 +125,20 @@ def run(compiler: str | None = None, only: list[str] | None = None, recompile_al
                   f"runtime window; fine if facts are baked, but verify behavior.")
         # Finetuned compiles can exceed the server's 120s gateway limit (504) or
         # the client read timeout, yet still finish server-side - so resubmitting
-        # the identical spec returns the now-cached result. Retry a few times.
+        # the identical spec returns the now-cached result. A 500/502/503 right
+        # after such a timeout is the same "still finalizing" case, so we resubmit
+        # (idempotent) rather than aborting the whole batch on one transient blip.
         pid = err = None
-        for attempt in range(1, 6):
+        for attempt in range(1, 8):
             try:
                 pid, err = compile_spec(spec, compiler)
                 break
             except httpx.TimeoutException:
                 pass
             except httpx.HTTPStatusError as e:
-                if e.response.status_code not in (502, 503, 504):
+                if e.response.status_code not in (500, 502, 503, 504):
                     raise
-            print(f"  attempt {attempt} timed out server-side; waiting for the cached result ...")
+            print(f"  attempt {attempt} transient/timeout ({compiler}); waiting for the cached result ...")
             time.sleep(20)
         if pid is None:
             raise SystemExit(f"Compile still pending for {name}; rerun `--only {name}` shortly.")
