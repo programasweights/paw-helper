@@ -4,6 +4,23 @@ All notable changes to paw-helper are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/). The content-pack contract has its own
 `schema_version` (currently 1), bumped independently of the package version.
 
+## [0.4.0] - 2026-06-24
+
+### Added
+- Parallel-branch **selector** (retrieve-then-rerank): a branch may declare
+  `selector: <program>` and `select_k: N`. The search provider supplies RECALL
+  (top-`select_k` candidates over a low `min_score` floor); the selector is a PAW
+  program shown the ORIGINAL question + the numbered candidate labels that returns
+  the genuinely-relevant numbers (most relevant first) or "none". This replaces a
+  brittle absolute `min_score` threshold with a question-aware precision stage, so
+  the merge is robust to retriever false positives. `min_score` now acts only as a
+  recall floor when a selector is present (still the sole hard gate without one).
+- `validate` + `compile` require/compile a branch's `selector` program (like `gate`).
+
+### Notes
+- Backward compatible: a branch without `selector` behaves exactly as in 0.3.0
+  (`min_score` is the precision threshold).
+
 ## [0.3.0] - 2026-06-24
 
 ### Added

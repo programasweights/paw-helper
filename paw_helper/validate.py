@@ -33,6 +33,8 @@ def _program_names(cfg: dict) -> list[str]:
         for b in dom.get("parallel_branches", []):
             if b.get("gate"):
                 names.append(b["gate"])
+            if b.get("selector"):
+                names.append(b["selector"])
     if cfg.get("validator"):
         names.append(cfg["validator"])
     names += [rr["program"] for rr in cfg.get("resource_routers", [])]

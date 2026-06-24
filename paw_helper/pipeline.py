@@ -15,6 +15,7 @@ score differently from what ships.
 """
 
 import logging
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -23,6 +24,18 @@ import yaml
 from . import common, inference
 
 log = logging.getLogger("paw_helper")
+
+
+def _parse_index_list(raw: str, n: int) -> list[int]:
+    """Parse a selector's output ("2, 1" or "none") into 0-based indices in [0, n),
+    in the model's order, de-duplicated. Non-numeric output (e.g. "none") -> []."""
+    out, seen = [], set()
+    for tok in re.findall(r"\d+", raw or ""):
+        i = int(tok) - 1
+        if 0 <= i < n and i not in seen:
+            seen.add(i)
+            out.append(i)
+    return out
 
 # Conservative chars-per-token estimate used only to derive a safe input cap from
 # the token budget. Intentionally on the high side so the cap stays comfortably
@@ -284,7 +297,11 @@ class Pipeline:
         return out
 
     def _run_branch(self, branch: dict, query: str) -> dict | None:
-        """gate (optional yes/no) -> provider.search -> filter by min_score/max_items.
+        """gate? (cheap yes/no early-exit) -> provider.search (RECALL) -> selector?
+        (a PAW reranker that, given the ORIGINAL QUESTION + candidates, keeps only
+        the genuinely relevant threads, or none) -> cap to max_items. The selector
+        is the precision stage: search recalls, the PAW function decides what is
+        actually relevant, so the merge is robust to retriever false positives.
         Returns {name, label, items} or None (skip)."""
         gate = branch.get("gate")
         if gate:
@@ -295,13 +312,32 @@ class Pipeline:
             items = self.search_providers[branch["provider"]](query) or []
         except Exception:
             return None
-        min_score = branch.get("min_score", 0)
-        items = [it for it in items if it.get("score", 0) >= min_score][: branch.get("max_items", 3)]
+        # Recall floor only: drop pure-noise candidates, then keep the top select_k
+        # for the precision stage. With a selector this stays LOW (the retriever just
+        # needs recall); without one it is the sole precision gate (a hard threshold).
+        items = [it for it in items if it.get("score", 0) >= branch.get("min_score", 0)]
+        items = items[: branch.get("select_k", branch.get("max_items", 3))]
+        if not items:
+            return None
+        selector = branch.get("selector")
+        if selector and selector in self.programs:
+            items = self._select_candidates(selector, query, items)
+        items = items[: branch.get("max_items", 3)]
         if not items:
             return None
         return {"name": branch["name"], "label": branch.get("result_label", "Related"),
                 "items": [{"label": it["label"], "url": it["url"], "description": it.get("description", "")}
                           for it in items]}
+
+    def _select_candidates(self, program: str, query: str, items: list[dict]) -> list[dict]:
+        """Question-aware precision rerank. Shows the selector the ORIGINAL question
+        and the numbered candidate labels; it returns the numbers that genuinely
+        answer the question (most relevant first) or "none". Robust to retriever
+        false positives because the model sees the question, not just a score."""
+        lines = "\n".join(f"{i + 1}. {it['label']}" for i, it in enumerate(items))
+        raw = self._infer(program, f"Question: {query}\n\nThreads:\n{lines}",
+                          self.mt.get("selector", 16))
+        return [items[i] for i in _parse_index_list(raw, len(items))]
 
     def _aggregate(self, query: str, main_out: dict, branch_results: list[dict]) -> dict:
         """Merge branch results into the main result. Built-in policy: nothing

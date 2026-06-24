@@ -61,6 +61,32 @@ def test_run_branch_yes_filters_score_and_caps(booted_pack):
     assert [it["label"] for it in r["items"]] == ["A"]  # B filtered, capped at 1
 
 
+def test_run_branch_selector_reranks(booted_pack):
+    """The PAW selector is the precision stage: BM25 recalls 3, the selector keeps
+    only the relevant ones (here #1 and #3), order preserved, robust to a false
+    positive (#2) the retriever scored high."""
+    p = _pipe(booted_pack, {"sel": "1, 3"})
+    p.programs["sel"] = "stub"
+    p.search_providers["fake"] = lambda q: [
+        {"label": "A", "url": "a", "score": 9},
+        {"label": "B-false-positive", "url": "b", "score": 8.5},
+        {"label": "C", "url": "c", "score": 8},
+    ]
+    r = p._run_branch({"name": "b", "provider": "fake", "selector": "sel",
+                       "min_score": 1, "select_k": 3, "max_items": 2}, "q")
+    assert [it["label"] for it in r["items"]] == ["A", "C"]  # B dropped by the selector
+
+
+def test_run_branch_selector_none_skips(booted_pack):
+    """Selector says nothing is relevant -> the branch stays invisible (no surface),
+    even though the retriever returned high-scoring candidates."""
+    p = _pipe(booted_pack, {"sel": "none"})
+    p.programs["sel"] = "stub"
+    p.search_providers["fake"] = lambda q: [{"label": "A", "url": "a", "score": 99}]
+    assert p._run_branch({"name": "b", "provider": "fake", "selector": "sel",
+                          "min_score": 1, "max_items": 2}, "q") is None
+
+
 def test_branches_selection(booted_pack):
     p = _pipe(booted_pack)
     p.search_providers["fake"] = lambda q: []
