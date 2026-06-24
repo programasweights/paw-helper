@@ -31,10 +31,9 @@ def _program_names(cfg: dict) -> list[str]:
             if isinstance(sub, dict) and sub.get("answerer"):
                 names.append(sub["answerer"])
         for b in dom.get("parallel_branches", []):
-            if b.get("gate"):
-                names.append(b["gate"])
-            if b.get("selector"):
-                names.append(b["selector"])
+            for key in ("gate", "selector", "answerer"):
+                if b.get(key):
+                    names.append(b[key])
     if cfg.get("validator"):
         names.append(cfg["validator"])
     names += [rr["program"] for rr in cfg.get("resource_routers", [])]

@@ -87,6 +87,55 @@ def test_run_branch_selector_none_skips(booted_pack):
                           "min_score": 1, "max_items": 2}, "q") is None
 
 
+def test_run_branch_answerer_synthesizes(booted_pack):
+    """selector keeps the relevant thread, then the answerer synthesizes a grounded
+    answer from its context. The branch result carries both items and answer."""
+    p = _pipe(booted_pack, {"sel": "1", "ans": "The deadline moved to June 25."})
+    p.programs["sel"] = p.programs["ans"] = "stub"
+    p.search_providers["fake"] = lambda q: [
+        {"label": "A1 changes", "url": "a", "score": 9, "context": "deadline extended to June 25"},
+        {"label": "noise", "url": "b", "score": 8},
+    ]
+    r = p._run_branch({"name": "b", "provider": "fake", "selector": "sel", "answerer": "ans",
+                       "min_score": 1, "select_k": 2, "max_items": 2}, "what changed")
+    assert r["answer"] == "The deadline moved to June 25."
+    assert [it["label"] for it in r["items"]] == ["A1 changes"]
+
+
+def test_run_branch_answerer_decline_not_promoted(booted_pack):
+    """If the answerer declines, no `answer` is attached (so it won't be promoted)."""
+    p = _pipe(booted_pack, {"sel": "1", "ans": "I don't have that information."})
+    p.programs["sel"] = p.programs["ans"] = "stub"
+    p.search_providers["fake"] = lambda q: [{"label": "T", "url": "a", "score": 9, "context": "x"}]
+    r = p._run_branch({"name": "b", "provider": "fake", "selector": "sel", "answerer": "ans",
+                       "min_score": 1, "max_items": 2}, "q")
+    assert "answer" not in r and r["items"]  # links remain, but no synthesized answer
+
+
+def test_run_branch_keep_bypasses_selector(booted_pack):
+    """Items marked keep=True bypass the reranker (e.g. a recency list); the selector
+    is never consulted for them."""
+    p = _pipe(booted_pack, {"sel": "none"})  # selector would reject everything
+    p.programs["sel"] = "stub"
+    p.search_providers["fake"] = lambda q: [{"label": "newest", "url": "a", "score": 5, "keep": True}]
+    r = p._run_branch({"name": "b", "provider": "fake", "selector": "sel",
+                       "min_score": 1, "max_items": 2}, "latest posts")
+    assert [it["label"] for it in r["items"]] == ["newest"]  # kept despite selector "none"
+
+
+def test_aggregate_promotes_branch_answer(booted_pack):
+    """A synthesized branch answer overrides a generic main answer and becomes primary,
+    with the threads as citations."""
+    p = _pipe(booted_pack)
+    main = {"result": {"type": "answer", "text": "generic A1 dates"}, "domain": "course"}
+    out = p._aggregate("q", main, [{"name": "piazza", "label": "From Piazza",
+                                    "items": [_ITEM], "answer": "The deadline moved to June 25."}])
+    assert out["result"]["type"] == "answer"
+    assert out["result"]["text"] == "The deadline moved to June 25."
+    assert out["result"]["related"] == [_ITEM]
+    assert out["branches"] == ["piazza"]
+
+
 def test_branches_selection(booted_pack):
     p = _pipe(booted_pack)
     p.search_providers["fake"] = lambda q: []

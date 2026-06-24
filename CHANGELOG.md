@@ -4,6 +4,24 @@ All notable changes to paw-helper are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/). The content-pack contract has its own
 `schema_version` (currently 1), bumped independently of the package version.
 
+## [0.5.0] - 2026-06-24
+
+### Added
+- Parallel-branch **answerer** (retrieve -> rerank -> ANSWER): a branch may declare
+  `answerer: <program>`. After the selector keeps the relevant candidates, the
+  answerer is shown the original question + the kept items' `context` (e.g. an
+  endorsed instructor reply a search provider attaches) and SYNTHESIZES a concise,
+  grounded answer (or declines). When a branch produces an answer, the aggregator
+  PROMOTES it to the primary result, with the threads attached as citation links -
+  so a confident branch answer overrides a generic main answer. Guards: the
+  selector (relevance) + an answerer decline (`_looks_like_decline`) gate promotion.
+- Provider items may set `keep: True` to BYPASS the selector (already-qualified
+  candidates, e.g. a recency list); the answerer still runs over them.
+- `validate` + `compile` require/compile a branch's `answerer` (like `gate`/`selector`).
+
+### Notes
+- Backward compatible: a branch without `answerer` behaves as in 0.4.0 (links only).
+
 ## [0.4.0] - 2026-06-24
 
 ### Added

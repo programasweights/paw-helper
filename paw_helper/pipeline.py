@@ -37,6 +37,19 @@ def _parse_index_list(raw: str, n: int) -> list[int]:
             out.append(i)
     return out
 
+
+_DECLINE_RE = re.compile(
+    r"don'?t have|do not have|not sure|don'?t know|do not know|no information|"
+    r"can'?t answer|cannot answer|couldn'?t find|could not find",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_decline(text: str) -> bool:
+    """Heuristic: did an answerer effectively decline? Used so a branch's
+    synthesized answer is only promoted when it actually answers."""
+    return not text.strip() or bool(_DECLINE_RE.search(text))
+
 # Conservative chars-per-token estimate used only to derive a safe input cap from
 # the token budget. Intentionally on the high side so the cap stays comfortably
 # under the real context window.
@@ -298,11 +311,13 @@ class Pipeline:
 
     def _run_branch(self, branch: dict, query: str) -> dict | None:
         """gate? (cheap yes/no early-exit) -> provider.search (RECALL) -> selector?
-        (a PAW reranker that, given the ORIGINAL QUESTION + candidates, keeps only
-        the genuinely relevant threads, or none) -> cap to max_items. The selector
-        is the precision stage: search recalls, the PAW function decides what is
-        actually relevant, so the merge is robust to retriever false positives.
-        Returns {name, label, items} or None (skip)."""
+        (a PAW reranker that keeps only genuinely relevant candidates) -> answerer?
+        (a PAW program that SYNTHESIZES a grounded answer from the kept items'
+        `context`, e.g. the endorsed instructor reply). Items the provider marks
+        `keep` bypass the reranker (already qualified, e.g. a recency list). Search
+        recalls, the PAW stages decide relevance + compose the answer, so the merge
+        is robust to retriever false positives. Returns {name, label, items,
+        answer?} or None (skip)."""
         gate = branch.get("gate")
         if gate:
             verdict = self._infer(gate, query, self.mt.get("gate", self.mt.get("classifier", 8)))
@@ -319,15 +334,35 @@ class Pipeline:
         items = items[: branch.get("select_k", branch.get("max_items", 3))]
         if not items:
             return None
+        # Provider-prequalified items (keep=True, e.g. a recency list) bypass the
+        # reranker; the rest go through the selector for precision.
+        kept = [it for it in items if it.get("keep")]
+        to_rank = [it for it in items if not it.get("keep")]
         selector = branch.get("selector")
-        if selector and selector in self.programs:
-            items = self._select_candidates(selector, query, items)
-        items = items[: branch.get("max_items", 3)]
+        if selector and selector in self.programs and to_rank:
+            to_rank = self._select_candidates(selector, query, to_rank)
+        items = (kept + to_rank)[: branch.get("max_items", 3)]
         if not items:
             return None
-        return {"name": branch["name"], "label": branch.get("result_label", "Related"),
-                "items": [{"label": it["label"], "url": it["url"], "description": it.get("description", "")}
-                          for it in items]}
+        out = {"name": branch["name"], "label": branch.get("result_label", "Related"),
+               "items": [{"label": it["label"], "url": it["url"], "description": it.get("description", "")}
+                         for it in items]}
+        answerer = branch.get("answerer")
+        if answerer and answerer in self.programs:
+            answer = self._answer_branch(answerer, query, items).strip()
+            if answer and not _looks_like_decline(answer):
+                out["answer"] = answer
+        return out
+
+    def _answer_branch(self, program: str, query: str, items: list[dict]) -> str:
+        """Synthesize a concise answer from the kept items' `context` (e.g. the
+        endorsed instructor reply). Grounded RAG: the answerer sees ONLY these
+        threads, so it answers from them or declines."""
+        ctx = "\n\n".join(
+            f"[{i + 1}] {it.get('label', '')}\n{it.get('context') or it.get('description', '')}"
+            for i, it in enumerate(items))
+        return self._infer(program, f"Question: {query}\n\nPiazza threads:\n{ctx}",
+                           self.mt.get("answerer", 200))
 
     def _select_candidates(self, program: str, query: str, items: list[dict]) -> list[dict]:
         """Question-aware precision rerank. Shows the selector the ORIGINAL question
@@ -340,20 +375,29 @@ class Pipeline:
         return [items[i] for i in _parse_index_list(raw, len(items))]
 
     def _aggregate(self, query: str, main_out: dict, branch_results: list[dict]) -> dict:
-        """Merge branch results into the main result. Built-in policy: nothing
-        relevant -> main unchanged (invisible); main declined -> branch links
-        rescue it; otherwise attach `related` links to the main result (augment).
+        """Merge branch results into the main result. Built-in policy:
+          - a branch SYNTHESIZED an answer -> promote it to the PRIMARY answer, with
+            the branch's threads attached as citation links (it overrides a generic
+            main answer; the branch's selector + answerer-decline are the guards);
+          - else nothing relevant -> main unchanged (invisible);
+          - else main declined -> branch links rescue it;
+          - else -> attach `related` links to the main result (augment).
         A content pack may export `aggregate(query, main, branches)` to override."""
         if not branch_results:
             return main_out
         if self._aggregate_fn:
             return self._aggregate_fn(query, main_out, branch_results)
-        items, label = [], None
+        items, label, answer = [], None, None
         for br in branch_results:
             items += br["items"]
             label = label or br.get("label")
+            if br.get("answer") and not answer:
+                answer = br["answer"]
         res = main_out["result"]
-        if res.get("type") == "none":
+        if answer:
+            main_out["result"] = {"type": "answer", "text": answer,
+                                  "related": items, "related_label": label or "Related"}
+        elif res.get("type") == "none":
             main_out["result"] = {"type": "links", "label": label or "Related", "items": items}
         else:
             res["related"] = items
