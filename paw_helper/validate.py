@@ -30,6 +30,9 @@ def _program_names(cfg: dict) -> list[str]:
         for sub in dom.get("topics", {}).values():
             if isinstance(sub, dict) and sub.get("answerer"):
                 names.append(sub["answerer"])
+        for b in dom.get("parallel_branches", []):
+            if b.get("gate"):
+                names.append(b["gate"])
     if cfg.get("validator"):
         names.append(cfg["validator"])
     names += [rr["program"] for rr in cfg.get("resource_routers", [])]
@@ -102,10 +105,15 @@ def validate(content_dir=None) -> tuple[list[str], list[str]]:
         errors.append("providers.py must define CONTEXT_PROVIDERS (a dict; may be empty for baked-only packs)")
     ctx_providers = set(getattr(providers, "CONTEXT_PROVIDERS", {}) or {}) if providers else set()
     res_providers = set(getattr(providers, "RESOURCE_PROVIDERS", {}) or {}) if providers else set()
+    search_providers = set(getattr(providers, "SEARCH_PROVIDERS", {}) or {}) if providers else set()
     for dname, dom in domains.items():
         ctx = dom.get("context")
         if ctx and providers is not None and ctx not in ctx_providers:
             errors.append(f"domain `{dname}` context `{ctx}` is not in providers.CONTEXT_PROVIDERS")
+        for b in dom.get("parallel_branches", []):
+            if providers is not None and b.get("provider") not in search_providers:
+                errors.append(f"domain `{dname}` parallel branch `{b.get('name')}` provider "
+                              f"`{b.get('provider')}` is not in providers.SEARCH_PROVIDERS")
     for rr in cfg.get("resource_routers", []):
         if rr.get("domain") not in domains:
             errors.append(f"resource_router domain `{rr.get('domain')}` is not a defined domain")

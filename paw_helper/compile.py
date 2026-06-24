@@ -76,6 +76,10 @@ def program_names(cfg: dict) -> list[str]:
         for _, sub in dom.get("topics", {}).items():
             if isinstance(sub, dict) and sub.get("answerer"):
                 names.append(sub["answerer"])
+        # Parallel-branch gate programs (optional yes/no classifiers).
+        for b in dom.get("parallel_branches", []):
+            if b.get("gate"):
+                names.append(b["gate"])
     if cfg.get("validator"):
         names.append(cfg["validator"])
     # Resource-router selector programs (e.g. slide_selector).

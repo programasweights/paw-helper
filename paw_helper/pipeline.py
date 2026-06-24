@@ -16,6 +16,7 @@ score differently from what ships.
 
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import yaml
 
@@ -76,6 +77,11 @@ class Pipeline:
         self.context_providers = prov.CONTEXT_PROVIDERS
         self.context_labels = getattr(prov, "CONTEXT_LABELS", {})
         self.resource_providers = getattr(prov, "RESOURCE_PROVIDERS", {})
+        # Parallel-branch search providers: name -> search(query) -> [{label,url,
+        # description,score}]. An optional content-pack `aggregate(query, main,
+        # branches)` overrides the built-in merge policy.
+        self.search_providers = getattr(prov, "SEARCH_PROVIDERS", {})
+        self._aggregate_fn = getattr(prov, "aggregate", None)
         self.links = {d: _load_links(spec["links"]) for d, spec in self.cfg["domains"].items()}
         # (domain, classifier label) -> resource-router config (e.g. course/slides).
         self.resource_routers = {(rr["domain"], rr["label"]): rr for rr in self.cfg.get("resource_routers", [])}
@@ -259,15 +265,95 @@ class Pipeline:
             res = {"type": "answer", "text": answer} if verdict.startswith("yes") else {"type": "none"}
         return {"result": res, "domain": domain, "route": "question", "verdict": verdict or None}
 
+    # --- parallel branches (multi-path: a side branch that augments the main) ---
+    def _branches(self, page: str) -> list[dict]:
+        """Enabled parallel branches for this request, keyed off the PAGE's home
+        domain (so a branch fires by ORIGIN, e.g. only on the course page) and only
+        when its gate program + search provider are actually available."""
+        page_domain = self.cfg["page_defaults"].get(page, self.cfg["default_domain"])
+        out = []
+        for b in self.cfg["domains"].get(page_domain, {}).get("parallel_branches", []):
+            wp = b.get("when_page")
+            if wp and not (page == wp or page.startswith(wp)):
+                continue
+            if b.get("provider") not in self.search_providers:
+                continue
+            if b.get("gate") and b["gate"] not in self.programs:
+                continue
+            out.append(b)
+        return out
+
+    def _run_branch(self, branch: dict, query: str) -> dict | None:
+        """gate (optional yes/no) -> provider.search -> filter by min_score/max_items.
+        Returns {name, label, items} or None (skip)."""
+        gate = branch.get("gate")
+        if gate:
+            verdict = self._infer(gate, query, self.mt.get("gate", self.mt.get("classifier", 8)))
+            if not verdict.strip().lower().startswith("yes"):
+                return None
+        try:
+            items = self.search_providers[branch["provider"]](query) or []
+        except Exception:
+            return None
+        min_score = branch.get("min_score", 0)
+        items = [it for it in items if it.get("score", 0) >= min_score][: branch.get("max_items", 3)]
+        if not items:
+            return None
+        return {"name": branch["name"], "label": branch.get("result_label", "Related"),
+                "items": [{"label": it["label"], "url": it["url"], "description": it.get("description", "")}
+                          for it in items]}
+
+    def _aggregate(self, query: str, main_out: dict, branch_results: list[dict]) -> dict:
+        """Merge branch results into the main result. Built-in policy: nothing
+        relevant -> main unchanged (invisible); main declined -> branch links
+        rescue it; otherwise attach `related` links to the main result (augment).
+        A content pack may export `aggregate(query, main, branches)` to override."""
+        if not branch_results:
+            return main_out
+        if self._aggregate_fn:
+            return self._aggregate_fn(query, main_out, branch_results)
+        items, label = [], None
+        for br in branch_results:
+            items += br["items"]
+            label = label or br.get("label")
+        res = main_out["result"]
+        if res.get("type") == "none":
+            main_out["result"] = {"type": "links", "label": label or "Related", "items": items}
+        else:
+            res["related"] = items
+            res["related_label"] = label or "Related"
+        main_out["branches"] = [br["name"] for br in branch_results]
+        return main_out
+
     # --- public API --------------------------------------------------------
+    def _main(self, query: str, page: str) -> dict:
+        return self._run_domain(self.resolve_domain(query, page), query)
+
     def run(self, query: str, page: str = "site") -> dict:
-        """Full result with meta: {result, domain, route, verdict}."""
+        """Full result with meta: {result, domain, route, verdict}.
+
+        On a page with parallel branches (e.g. the course page's Piazza branch),
+        the main pipeline and each branch run CONCURRENTLY (cheap on the remote
+        backend), then the aggregator merges the branch results into the main one.
+        """
         q = (query or "").strip()
         if len(q) < 3:
             return {"result": {"type": "none"}, "domain": None, "route": None, "verdict": None}
-        domain = self.resolve_domain(q, page)
-        out = self._run_domain(domain, q)
-        # Reconsider: if the routed domain declined, try the page-default domain once.
+
+        branches = self._branches(page)
+        if branches:
+            with ThreadPoolExecutor(max_workers=1 + len(branches)) as ex:
+                main_fut = ex.submit(self._main, q, page)
+                branch_futs = [ex.submit(self._run_branch, b, q) for b in branches]
+                out = main_fut.result()
+                results = [bf.result() for bf in branch_futs]
+            out = self._aggregate(q, out, [r for r in results if r])
+        else:
+            out = self._main(q, page)
+
+        domain = out.get("domain")
+        # Reconsider: if the routed domain declined (and no branch rescued it), try
+        # the page-default domain once.
         if out["result"].get("type") == "none" and self.resilience.get("reconsider"):
             default = self.cfg["page_defaults"].get(page, self.cfg["default_domain"])
             if default in self.available and default != domain:

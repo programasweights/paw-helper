@@ -4,6 +4,20 @@ All notable changes to paw-helper are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/). The content-pack contract has its own
 `schema_version` (currently 1), bumped independently of the package version.
 
+## [0.3.0] - 2026-06-24
+
+### Added
+- Parallel branches: a domain may declare `parallel_branches: [{name, when_page,
+  gate, provider, min_score, max_items, result_label}]`. `run()` executes the main
+  pipeline and each enabled branch CONCURRENTLY (a `ThreadPoolExecutor`; cheap on
+  the `remote_infer` backend), then aggregates: nothing relevant -> main unchanged
+  (invisible); main declined -> branch links rescue it; otherwise branch links are
+  attached as `result.related` (augment). A content pack may export
+  `aggregate(query, main, branches)` to override the merge.
+- `SEARCH_PROVIDERS` provider type (`search(query) -> [{label,url,description,score}]`)
+  for branch retrieval; `validate` + `compile` understand branch gates/providers.
+- The widget renders `result.related` ("Related") links below a main result.
+
 ## [0.1.1] - 2026-06-22
 
 ### Added

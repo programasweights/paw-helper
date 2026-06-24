@@ -272,6 +272,7 @@
       a.appendChild(el('span', 'paw-helper__result-title', r.label));
       if (r.description) a.appendChild(el('span', 'paw-helper__result-desc', r.description));
       results.appendChild(a);
+      appendRelated(r);
     }
 
     function renderLinks(r) {
@@ -286,6 +287,7 @@
         if (it.description) a.appendChild(el('span', 'paw-helper__result-desc', it.description));
         results.appendChild(a);
       });
+      appendRelated(r);
     }
 
     function appendMarkdown(parent, text) {
@@ -311,6 +313,22 @@
       appendMarkdown(p, r.text || '');
       d.appendChild(p);
       results.appendChild(d);
+      appendRelated(r);
+    }
+
+    // A parallel branch (e.g. course Piazza search) can attach related links to a
+    // main result; render them below it.
+    function appendRelated(r) {
+      var rel = (r && r.related) || [];
+      if (!rel.length) return;
+      results.appendChild(el('p', 'paw-helper__placeholder', (r.related_label || 'Related') + ':'));
+      rel.forEach(function (it) {
+        var a = el('a', 'paw-helper__result paw-helper__result--link');
+        a.href = it.url; a.target = '_blank'; a.rel = 'noopener';
+        a.appendChild(el('span', 'paw-helper__result-title', it.label));
+        if (it.description) a.appendChild(el('span', 'paw-helper__result-desc', it.description));
+        results.appendChild(a);
+      });
     }
 
     function renderNone() {
