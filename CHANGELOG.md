@@ -4,6 +4,25 @@ All notable changes to paw-helper are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/). The content-pack contract has its own
 `schema_version` (currently 1), bumped independently of the package version.
 
+## [0.6.0] - 2026-06-24
+
+### Added
+- Parallel-branch **merge judge** (question-aware aggregation): a branch may declare
+  `merge: <program>`. When the branch synthesized an answer, the aggregator shows the
+  judge the QUESTION + the main answer + the branch answer (+ source titles) and it
+  returns `main` (keep the course answer, discard the branch - no hijack), `augment`
+  (keep the main answer + attach the branch citation), or `branch` (promote the branch
+  answer to primary). This replaces blanket promote-on-answer with a decision made
+  from BOTH answers, so the branch only wins when it is genuinely better. Falls back
+  to promote-on-answer when no `merge` is configured (back-compat).
+- `run()` records the decision in `out["merge"]` (`main | piazza | augment`) for
+  outcome-level benchmarking.
+- `validate` + `compile` require/compile a branch's `merge` program.
+
+### Notes
+- Pairs with over-calling the branch (no gate): recall is cheap; the merge judge,
+  having both answers in hand, is a more robust selector than an up-front topic gate.
+
 ## [0.5.0] - 2026-06-24
 
 ### Added

@@ -125,7 +125,7 @@ def test_run_branch_keep_bypasses_selector(booted_pack):
 
 def test_aggregate_promotes_branch_answer(booted_pack):
     """A synthesized branch answer overrides a generic main answer and becomes primary,
-    with the threads as citations."""
+    with the threads as citations (no merge judge -> promote-on-answer back-compat)."""
     p = _pipe(booted_pack)
     main = {"result": {"type": "answer", "text": "generic A1 dates"}, "domain": "course"}
     out = p._aggregate("q", main, [{"name": "piazza", "label": "From Piazza",
@@ -134,6 +134,43 @@ def test_aggregate_promotes_branch_answer(booted_pack):
     assert out["result"]["text"] == "The deadline moved to June 25."
     assert out["result"]["related"] == [_ITEM]
     assert out["branches"] == ["piazza"]
+    assert out["merge"] == "piazza"
+
+
+def _branch(answer, merge="judge"):
+    return {"name": "piazza", "label": "From Piazza", "merge": merge, "items": [_ITEM], "answer": answer}
+
+
+def test_merge_judge_main_keeps_course_answer(booted_pack):
+    """Merge judge says 'main': the course answer stands, branch is discarded (no hijack)."""
+    p = _pipe(booted_pack, {"judge": "main"})
+    p.programs["judge"] = "stub"
+    main = {"result": {"type": "answer", "text": "office hours: Mon 2-3 (all TAs)"}, "domain": "course"}
+    out = p._aggregate("what are the office hours", main, [_branch("Dake's office hours are Monday 2-3.")])
+    assert out["result"]["text"] == "office hours: Mon 2-3 (all TAs)"
+    assert "related" not in out["result"]
+    assert out["merge"] == "main"
+
+
+def test_merge_judge_augment_keeps_main_plus_citation(booted_pack):
+    """Merge judge says 'augment': keep the main answer, attach the branch citation."""
+    p = _pipe(booted_pack, {"judge": "augment"})
+    p.programs["judge"] = "stub"
+    main = {"result": {"type": "answer", "text": "the project is X"}, "domain": "course"}
+    out = p._aggregate("project info", main, [_branch("see the group-formation note")])
+    assert out["result"]["text"] == "the project is X"        # main kept
+    assert out["result"]["related"] == [_ITEM]                # citation attached
+    assert out["merge"] == "augment"
+
+
+def test_merge_judge_branch_promotes(booted_pack):
+    """Merge judge says 'branch': promote the Piazza answer to primary."""
+    p = _pipe(booted_pack, {"judge": "branch"})
+    p.programs["judge"] = "stub"
+    main = {"result": {"type": "answer", "text": "generic A1 dates"}, "domain": "course"}
+    out = p._aggregate("what changed about A1", main, [_branch("A1 was updated; deadline extended")])
+    assert out["result"]["text"] == "A1 was updated; deadline extended"
+    assert out["merge"] == "piazza"
 
 
 def test_branches_selection(booted_pack):

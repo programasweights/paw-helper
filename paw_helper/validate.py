@@ -31,7 +31,7 @@ def _program_names(cfg: dict) -> list[str]:
             if isinstance(sub, dict) and sub.get("answerer"):
                 names.append(sub["answerer"])
         for b in dom.get("parallel_branches", []):
-            for key in ("gate", "selector", "answerer"):
+            for key in ("gate", "selector", "answerer", "merge"):
                 if b.get(key):
                     names.append(b[key])
     if cfg.get("validator"):

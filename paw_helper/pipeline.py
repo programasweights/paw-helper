@@ -345,6 +345,7 @@ class Pipeline:
         if not items:
             return None
         out = {"name": branch["name"], "label": branch.get("result_label", "Related"),
+               "merge": branch.get("merge"),  # optional merge-judge program (decides main/branch/augment)
                "items": [{"label": it["label"], "url": it["url"], "description": it.get("description", "")}
                          for it in items]}
         answerer = branch.get("answerer")
@@ -375,32 +376,46 @@ class Pipeline:
         return [items[i] for i in _parse_index_list(raw, len(items))]
 
     def _aggregate(self, query: str, main_out: dict, branch_results: list[dict]) -> dict:
-        """Merge branch results into the main result. Built-in policy:
-          - a branch SYNTHESIZED an answer -> promote it to the PRIMARY answer, with
-            the branch's threads attached as citation links (it overrides a generic
-            main answer; the branch's selector + answerer-decline are the guards);
-          - else nothing relevant -> main unchanged (invisible);
-          - else main declined -> branch links rescue it;
-          - else -> attach `related` links to the main result (augment).
-        `out["merge"]` records WHICH decision was taken (main | piazza | augment) so
-        the outcome benchmark can grade it. A content pack may export
-        `aggregate(query, main, branches)` to override."""
+        """Merge branch results into the main result. When a branch synthesized an
+        answer AND declares a `merge` program, a QUESTION-AWARE judge decides, from
+        the question + the main answer + the branch answer, whether to keep `main`,
+        promote the branch (`branch`), or `augment` (main answer + branch citation).
+        This is more robust than a blanket promote: it has both answers in hand.
+        Without a merge program it falls back to promote-on-answer. Other policy:
+        nothing relevant -> main unchanged; main declined -> branch links rescue it;
+        branch links but no answer -> augment. `out["merge"]` records the decision
+        (main | piazza | augment) so the outcome benchmark can grade it. A content
+        pack may export `aggregate(query, main, branches)` to override."""
         if not branch_results:
             main_out["merge"] = "main"
             return main_out
         if self._aggregate_fn:
             return self._aggregate_fn(query, main_out, branch_results)
-        items, label, answer = [], None, None
+        items, label, answer, merge_prog = [], None, None, None
         for br in branch_results:
             items += br["items"]
             label = label or br.get("label")
             if br.get("answer") and not answer:
                 answer = br["answer"]
+            merge_prog = merge_prog or br.get("merge")
         res = main_out["result"]
+
         if answer:
-            main_out["result"] = {"type": "answer", "text": answer,
-                                  "related": items, "related_label": label or "Related"}
-            main_out["merge"] = "piazza"
+            decision = "branch"
+            if merge_prog and merge_prog in self.programs:
+                main_text = res.get("text") or res.get("label") or ""
+                decision = self._merge(merge_prog, query, main_text, answer, items)
+            if decision == "main":
+                main_out["merge"] = "main"
+                return main_out  # branch discarded; the course's own answer stands
+            if decision == "augment" and res.get("type") not in (None, "none"):
+                res["related"] = items
+                res["related_label"] = label or "Related"
+                main_out["merge"] = "augment"
+            else:  # promote the branch answer to primary, with citations
+                main_out["result"] = {"type": "answer", "text": answer,
+                                      "related": items, "related_label": label or "Related"}
+                main_out["merge"] = "piazza"
         elif res.get("type") == "none":
             main_out["result"] = {"type": "links", "label": label or "Related", "items": items}
             main_out["merge"] = "piazza"
@@ -410,6 +425,24 @@ class Pipeline:
             main_out["merge"] = "augment"
         main_out["branches"] = [br["name"] for br in branch_results]
         return main_out
+
+    def _merge(self, program: str, query: str, main_text: str, branch_answer: str,
+               items: list[dict]) -> str:
+        """Question-aware merge judge: given the question, the main answer, and the
+        branch answer (+ source titles), return 'main' | 'augment' | 'branch'.
+        Defaults to 'branch' when the output is unclear (back-compat with promote)."""
+        titles = "; ".join(it.get("label", "") for it in items)
+        prompt = (f"Question: {query}\n\n"
+                  f"Course answer: {main_text or '(none)'}\n\n"
+                  f"Piazza answer: {branch_answer}\n"
+                  f"Piazza source(s): {titles}")
+        out = self._infer(program, prompt,
+                          self.mt.get("merge", self.mt.get("classifier", 8))).strip().lower()
+        if out.startswith("main"):
+            return "main"
+        if out.startswith("augment"):
+            return "augment"
+        return "branch"
 
     # --- public API --------------------------------------------------------
     def _main(self, query: str, page: str) -> dict:

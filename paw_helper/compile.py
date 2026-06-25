@@ -76,9 +76,9 @@ def program_names(cfg: dict) -> list[str]:
         for _, sub in dom.get("topics", {}).items():
             if isinstance(sub, dict) and sub.get("answerer"):
                 names.append(sub["answerer"])
-        # Parallel-branch programs: optional gate + precision selector + RAG answerer.
+        # Parallel-branch programs: optional gate + selector + answerer + merge judge.
         for b in dom.get("parallel_branches", []):
-            for key in ("gate", "selector", "answerer"):
+            for key in ("gate", "selector", "answerer", "merge"):
                 if b.get(key):
                     names.append(b[key])
     if cfg.get("validator"):
