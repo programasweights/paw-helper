@@ -8,7 +8,7 @@ backend can answer about your site, and an embeddable widget.js drops onto any p
 See README.md for the quickstart and docs/ for the design.
 """
 
-__version__ = "0.6.0"
+__version__ = "0.6.1"
 
 from .common import set_content_dir  # noqa: E402
 from .pipeline import Pipeline  # noqa: E402

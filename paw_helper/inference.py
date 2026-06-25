@@ -54,19 +54,33 @@ class RemoteInferBackend:
         self._headers = _auth_headers()
 
     def infer(self, name: str, text: str, max_tokens: int) -> str:
-        resp = httpx.post(
-            self.endpoint,
-            json={
-                "program_id": self.programs[name],
-                "input": text,
-                "max_tokens": max_tokens,
-                "temperature": 0.0,
-            },
-            headers=self._headers,
-            timeout=self.timeout_s,
-        )
-        resp.raise_for_status()
-        return str(resp.json().get("output", "")).strip()
+        # The API can transiently return an EMPTY output (e.g. when rate-limited
+        # under burst load) or a 429/5xx. These helper programs never legitimately
+        # return empty, so an empty/error response is a transient failure: retry with
+        # a short backoff rather than letting the helper answer with "" (which would
+        # surface as a blank/"I don't have that" answer in production).
+        import time
+
+        body = {
+            "program_id": self.programs[name],
+            "input": text,
+            "max_tokens": max_tokens,
+            "temperature": 0.0,
+        }
+        last = ""
+        for attempt in range(4):
+            try:
+                resp = httpx.post(self.endpoint, json=body, headers=self._headers,
+                                  timeout=self.timeout_s)
+                resp.raise_for_status()
+                last = str(resp.json().get("output", "")).strip()
+                if last:
+                    return last
+            except httpx.HTTPError:
+                pass
+            if attempt < 3:
+                time.sleep(0.5 * (attempt + 1))
+        return last
 
 
 def _default_infer_endpoint() -> str:

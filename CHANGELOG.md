@@ -4,6 +4,15 @@ All notable changes to paw-helper are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/). The content-pack contract has its own
 `schema_version` (currently 1), bumped independently of the package version.
 
+## [0.6.1] - 2026-06-25
+
+### Fixed
+- `RemoteInferBackend.infer` now retries (4 attempts, short backoff) on an EMPTY
+  output or a 429/5xx. The PAW API can transiently return an empty completion under
+  burst load (rate-limited); previously that surfaced as a blank / "I don't have
+  that" answer in production. Helper programs never legitimately return empty, so an
+  empty response is treated as a transient failure and retried.
+
 ## [0.6.0] - 2026-06-24
 
 ### Added
