@@ -382,8 +382,11 @@ class Pipeline:
           - else nothing relevant -> main unchanged (invisible);
           - else main declined -> branch links rescue it;
           - else -> attach `related` links to the main result (augment).
-        A content pack may export `aggregate(query, main, branches)` to override."""
+        `out["merge"]` records WHICH decision was taken (main | piazza | augment) so
+        the outcome benchmark can grade it. A content pack may export
+        `aggregate(query, main, branches)` to override."""
         if not branch_results:
+            main_out["merge"] = "main"
             return main_out
         if self._aggregate_fn:
             return self._aggregate_fn(query, main_out, branch_results)
@@ -397,11 +400,14 @@ class Pipeline:
         if answer:
             main_out["result"] = {"type": "answer", "text": answer,
                                   "related": items, "related_label": label or "Related"}
+            main_out["merge"] = "piazza"
         elif res.get("type") == "none":
             main_out["result"] = {"type": "links", "label": label or "Related", "items": items}
+            main_out["merge"] = "piazza"
         else:
             res["related"] = items
             res["related_label"] = label or "Related"
+            main_out["merge"] = "augment"
         main_out["branches"] = [br["name"] for br in branch_results]
         return main_out
 
@@ -430,6 +436,7 @@ class Pipeline:
             out = self._aggregate(q, out, [r for r in results if r])
         else:
             out = self._main(q, page)
+        out.setdefault("merge", "main")  # outcome: which source the result came from
 
         domain = out.get("domain")
         # Reconsider: if the routed domain declined (and no branch rescued it), try
