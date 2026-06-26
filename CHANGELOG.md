@@ -4,6 +4,16 @@ All notable changes to paw-helper are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/). The content-pack contract has its own
 `schema_version` (currently 1), bumped independently of the package version.
 
+## [0.6.2] - 2026-06-25
+
+### Fixed
+- Branch faithfulness: when a branch's `answerer` DECLINES, the branch now contributes
+  nothing - not even a citation. Previously the selector-kept threads were still
+  surfaced as `related` links even though the answerer could not answer from them,
+  which cited an irrelevant source (e.g. the Assignment 2 post shown for "is
+  assignment 3 released"). The answerer's decline is the grounding signal that the
+  kept threads do not address the question.
+
 ## [0.6.1] - 2026-06-25
 
 ### Fixed

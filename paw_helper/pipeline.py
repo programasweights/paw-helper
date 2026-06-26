@@ -353,6 +353,13 @@ class Pipeline:
             answer = self._answer_branch(answerer, query, items).strip()
             if answer and not _looks_like_decline(answer):
                 out["answer"] = answer
+            else:
+                # The answerer is the grounding judge: if it cannot answer from the
+                # kept threads (declines), those threads do NOT address the question,
+                # so the branch contributes NOTHING - not even a citation. (Citing a
+                # source you couldn't answer from is the core RAG faithfulness bug,
+                # e.g. surfacing the Assignment 2 post for "is assignment 3 released".)
+                return None
         return out
 
     def _answer_branch(self, program: str, query: str, items: list[dict]) -> str:
