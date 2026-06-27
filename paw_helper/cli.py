@@ -56,7 +56,7 @@ def _cmd_init(args) -> int:
         "# offline demo, no PAW key\n"
         "  # then edit config.yaml / links.yaml / facts.md / specs/ for your site, and:\n"
         f"  paw-helper compile --content {dst} --compiler paw-ft-bs48            "
-        "# needs a PAW API key\n"
+        "# compiles your programs (works anonymously)\n"
         f"  paw-helper serve --content {dst}"
     )
     return 0

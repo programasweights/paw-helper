@@ -43,13 +43,12 @@ mypack/
 
 ## Prerequisites
 
-- Python 3.10+.
-- A PAW account + API key, needed only to **compile** (and recommended for
-  authenticated serving). Create one and generate a key at
-  `https://programasweights.com/settings`, then `export PAW_API_KEY=paw_sk_...`.
-  Inference itself runs locally/self-hosted, not on the hosted API.
-
-You do NOT need any of that for the 60-second demo below.
+- Python 3.10+. That is it - **no PAW account required**. Compiling and serving both
+  work anonymously.
+- Optional: a PAW API key raises the anonymous compile rate limit (20/hr -> 60/hr) and
+  lets you name programs. Generate one at `https://programasweights.com/settings` and
+  `export PAW_API_KEY=paw_sk_...`. You only need it if you hit the anonymous compile
+  limit, or if you serve the shared `remote_infer` backend under load.
 
 ## Step 0 - Get the framework
 
@@ -65,10 +64,10 @@ pip install -e ".[dev]" --extra-index-url https://pypi.programasweights.com/simp
 (A published `pip install paw-helper --extra-index-url https://pypi.programasweights.com/simple/`
 is the future path; the clone also gives you the example pack and tests.)
 
-## Step 1 - 60-second offline demo (no PAW key)
+## Step 1 - 60-second offline demo (no network)
 
-Prove the whole shape works before touching credentials. The `mock` backend returns
-canned answers, so it needs no API key and no compiled `programs.json`:
+Prove the whole shape works with zero network calls. The `mock` backend returns canned
+answers, so it needs no compile and no `programs.json`:
 
 ```bash
 paw-helper init mypack                                   # scaffold a starter pack
@@ -130,18 +129,19 @@ seam). The file's docstring shows the shape.
 Re-run `paw-helper validate --content mypack` until it reports OK. It collects ALL
 errors at once with the exact key/file at fault - fix them and re-run.
 
-## Step 3 - Compile (needs the PAW key)
+## Step 3 - Compile
 
 ```bash
-export PAW_API_KEY=paw_sk_...
 paw-helper compile --content mypack --compiler paw-ft-bs48
 ```
 
-This compiles each spec into a pinned PAW program and writes `mypack/programs.json`
-(commit it). `paw-ft-bs48` is the highest-accuracy compiler (~2-5 min/program). For
-fast iteration on a spec, you can omit `--compiler` to use the quick default, then
-recompile the final specs with `paw-ft-bs48` (same runtime, drop-in). Commit
-`programs.json` so the server runs exactly what you compiled.
+This compiles each spec into a pinned PAW program (over the network, on the hosted PAW
+compiler) and writes `mypack/programs.json` (commit it). It works **anonymously** - no
+account needed (20 compiles/hr; `export PAW_API_KEY=paw_sk_...` for a higher limit).
+`paw-ft-bs48` is the highest-accuracy compiler (~2-5 min/program). For fast iteration on
+a spec, you can omit `--compiler` to use the quick default, then recompile the final
+specs with `paw-ft-bs48` (same runtime, drop-in). Commit `programs.json` so the server
+runs exactly what you compiled.
 
 ## Step 4 - Serve and smoke-test
 

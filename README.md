@@ -47,7 +47,7 @@ paw-helper validate --content mypack
 # 3a. See it answer with NO PAW key (canned mock backend, no compile needed):
 PAW_HELPER_INFERENCE_BACKEND=mock paw-helper serve --content mypack --port 8088
 
-# 3b. When ready: compile your programs (needs network + the PAW API). Pins programs.json.
+# 3b. When ready: compile your programs (anonymous, no account; needs network). Pins programs.json.
 paw-helper compile --content mypack --compiler paw-ft-bs48
 
 # 4. Serve for real. /ask, /feedback, /health, and /widget.js.
