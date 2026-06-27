@@ -108,6 +108,11 @@ Templates are in [paw_helper/deploy/](paw_helper/deploy): a systemd unit and an
 nginx vhost. Programs are pinned in `programs.json` (committed), so the server runs
 exactly what you compiled - no compilation on the server.
 
+When you re-deploy the nginx vhost later, `diff` it against the actually-served config
+first (it drifts - certbot and hand-edits change the live file) and back up to `/root`,
+never into `sites-enabled/`. See the header of
+[paw-helper.nginx.conf.example](paw_helper/deploy/paw-helper.nginx.conf.example).
+
 ```bash
 # deploy
 git -C /opt/paw-helper/content pull --ff-only

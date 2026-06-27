@@ -6,6 +6,17 @@
 #   sudo certbot --nginx -d helper.example.com   # adds the :443 block + redirect
 #
 # CORS is handled by the app (HELPER_ALLOWED_ORIGINS), so nginx adds no CORS headers.
+#
+# Re-deploying this file later? It DRIFTS from what is actually live (certbot edits the
+# live file in place; hand-tweaks accumulate). Before overwriting the live config:
+#   1. Find the served file: `sudo nginx -T | grep -n "server_name helper.example.com"`
+#      (it may be a differently-named file in sites-enabled/, not sites-available/).
+#   2. `diff` live vs this file - the only differences should be your intended change;
+#      if live has extra blocks (TLS, redirects, CORS), reconcile this file to match
+#      live FIRST. Never clobber live with a stale copy.
+#   3. Back up the live file to /root (NOT into sites-enabled/ - `include sites-enabled/*`
+#      loads every file there, so a `.bak` becomes a duplicate `server` block).
+#   4. `sudo nginx -t` before `sudo systemctl reload nginx`; restore the backup if it fails.
 
 server {
     listen 80;
