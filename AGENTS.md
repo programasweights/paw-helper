@@ -154,6 +154,33 @@ curl -s -X POST localhost:8088/ask -H 'Content-Type: application/json' \
 
 Eyeball the answers against your facts. Tighten specs/facts and re-compile as needed.
 
+### Two ways to serve (inference backends)
+
+Set `PAW_HELPER_INFERENCE_BACKEND` to choose where each PAW call runs:
+
+- `local_sdk` (default) - runs the programs **in-process on your own CPU** via the PAW
+  SDK. Fully self-contained (no per-request network), and works anonymously. Caveat:
+  inference is serialized through one local model instance, so it is **less amenable to
+  concurrent requests** - several visitors at once queue behind each other. Best for a
+  low-traffic personal site or a box with spare CPU.
+
+  ```bash
+  PAW_HELPER_INFERENCE_BACKEND=local_sdk paw-helper serve --content mypack
+  ```
+
+- `remote_infer` - **offloads inference to the PAW server** (`/api/v1/infer`), so the
+  hosted GPUs do the work and concurrent requests are handled far better. Each `/ask`
+  makes a network call; under real load set a valid `PAW_API_KEY` (an anonymous key hits
+  a strict per-IP rate limit -> blank answers). Best when you expect concurrency or your
+  host has little CPU.
+
+  ```bash
+  PAW_HELPER_INFERENCE_BACKEND=remote_infer paw-helper serve --content mypack
+  ```
+
+Same pipeline, logs, and programs either way - only the PAW-call transport changes.
+(`mock` is the third, demo-only backend from Step 1.)
+
 ## Step 5 - Deploy and embed
 
 Templates are in `paw_helper/deploy/` (a systemd unit, an nginx vhost, and an

@@ -143,19 +143,27 @@ programs are available - they are your release gate, not part of offline CI.
 
 ### Inference Backend
 
-By default the server runs pinned program IDs through the local PAW SDK runtime:
+There are two ways to serve:
 
-```bash
-PAW_HELPER_INFERENCE_BACKEND=local_sdk paw-helper serve --content mypack
-```
+- `local_sdk` (default) runs the programs **in-process on your own CPU**. Self-contained
+  (no per-request network), but inference is serialized through one local model instance,
+  so it is **less amenable to concurrent requests** (visitors queue behind each other).
+  Good for a low-traffic site or a box with spare CPU.
 
-For a shared backend that should use the central PAW inference service, run:
+  ```bash
+  PAW_HELPER_INFERENCE_BACKEND=local_sdk paw-helper serve --content mypack
+  ```
 
-```bash
-PAW_HELPER_INFERENCE_BACKEND=remote_infer \
-PAW_HELPER_INFER_ENDPOINT=https://programasweights.com/api/v1/infer \
-paw-helper serve --content mypack
-```
+- `remote_infer` **offloads inference to the PAW server** (`/api/v1/infer`), so hosted
+  GPUs do the work and concurrency is handled far better. Each `/ask` makes a network
+  call; under load set a valid `PAW_API_KEY` (anonymous keys hit a strict per-IP rate
+  limit -> blank answers).
+
+  ```bash
+  PAW_HELPER_INFERENCE_BACKEND=remote_infer \
+  PAW_HELPER_INFER_ENDPOINT=https://programasweights.com/api/v1/infer \
+  paw-helper serve --content mypack
+  ```
 
 Both modes use the same `Pipeline`, logs, and eval harness; only the PAW call
 transport changes.
