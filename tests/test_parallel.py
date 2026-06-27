@@ -125,6 +125,37 @@ def test_run_branch_keep_bypasses_selector(booted_pack):
     assert [it["label"] for it in r["items"]] == ["newest"]  # kept despite selector "none"
 
 
+def test_run_branch_list_only_presents_links_skips_answerer(booted_pack):
+    """Recency/list items (list_only) are surfaced as a links list and the Q&A answerer
+    is SKIPPED - feeding a vague "what's new" to a question-answerer makes it hallucinate
+    (it described threads it was never given). list_primary is flagged for the aggregator."""
+    p = _pipe(booted_pack, {"ans": "SHOULD NOT BE CALLED"})
+    p.programs["ans"] = "stub"
+    p.search_providers["fake"] = lambda q: [
+        {"label": "Assignment 2 released", "url": "a", "score": 100, "keep": True, "list_only": True},
+        {"label": "grading format", "url": "b", "score": 99, "keep": True, "list_only": True},
+    ]
+    r = p._run_branch({"name": "b", "provider": "fake", "answerer": "ans",
+                       "min_score": 1, "max_items": 2}, "latest piazza")
+    assert r["list_primary"] is True
+    assert "answer" not in r
+    assert [it["label"] for it in r["items"]] == ["Assignment 2 released", "grading format"]
+
+
+def test_aggregate_list_primary_overrides_main(booted_pack):
+    """A list/recency branch owns the result: its items become the primary links list,
+    overriding whatever generic answer the main pipeline produced."""
+    p = _pipe(booted_pack)
+    main = {"result": {"type": "answer", "text": "some generic course answer"}, "domain": "course"}
+    out = p._aggregate("latest piazza", main,
+                       [{"name": "piazza", "label": "Latest on Piazza", "items": [_ITEM], "list_primary": True}])
+    assert out["result"]["type"] == "links"
+    assert out["result"]["items"] == [_ITEM]
+    assert out["result"]["label"] == "Latest on Piazza"
+    assert out["merge"] == "piazza"
+    assert out["branches"] == ["piazza"]
+
+
 def test_aggregate_promotes_branch_answer(booted_pack):
     """A synthesized branch answer overrides a generic main answer and becomes primary,
     with the threads as citations (no merge judge -> promote-on-answer back-compat)."""

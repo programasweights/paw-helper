@@ -360,6 +360,15 @@ class Pipeline:
                "merge": branch.get("merge"),  # optional merge-judge program (decides main/branch/augment)
                "items": [{"label": it["label"], "url": it["url"], "description": it.get("description", "")}
                          for it in items]}
+        # List/recency items (provider-marked `list_only`, e.g. "latest posts"): the
+        # request is "show me the recent ones", not a question. Their LABELS are the
+        # answer, so present them directly as a links list and SKIP the Q&A answerer -
+        # feeding a vague "what's new" to a question-answerer makes it hallucinate /
+        # omit (it described threads it was never given). `list_primary` tells the
+        # aggregator to surface this list as the primary result.
+        if items and all(it.get("list_only") for it in items):
+            out["list_primary"] = True
+            return out
         answerer = branch.get("answerer")
         if answerer and answerer in self.programs:
             answer = self._answer_branch(answerer, query, items).strip()
@@ -417,6 +426,16 @@ class Pipeline:
             if br.get("answer") and not answer:
                 answer = br["answer"]
             merge_prog = merge_prog or br.get("merge")
+
+        # A list/recency branch (e.g. "latest posts") owns the result: surface its
+        # items as a primary links list. The recency query is inherently a branch-meta
+        # request, so it overrides whatever generic thing the main pipeline produced.
+        if any(br.get("list_primary") for br in branch_results):
+            main_out["result"] = {"type": "links", "label": label or "Related", "items": items}
+            main_out["merge"] = "piazza"
+            main_out["branches"] = [br["name"] for br in branch_results]
+            return main_out
+
         res = main_out["result"]
 
         if answer:

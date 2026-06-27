@@ -4,6 +4,22 @@ All notable changes to paw-helper are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/). The content-pack contract has its own
 `schema_version` (currently 1), bumped independently of the package version.
 
+## [0.8.0] - 2026-06-27
+
+### Added
+- Parallel-branch **list/recency results**: a search provider may mark items
+  `list_only: True` (e.g. a "latest posts" recency list). When every kept item is
+  `list_only`, the branch SKIPS the Q&A answerer and returns the items as a links list
+  with `list_primary: True`; the aggregator then surfaces that list as the PRIMARY
+  result, overriding the main pipeline.
+
+### Fixed
+- "latest / what's new" branch queries no longer run the kept threads through the Q&A
+  `answerer`, which is built to answer a SPECIFIC question and hallucinated on a vague
+  "what's new" (it summarized threads it was never given, and omitted the actual newest
+  post). A recency query is a "show me the latest" request, so its items' titles ARE the
+  answer - they are now listed faithfully and deterministically.
+
 ## [0.7.0] - 2026-06-26
 
 ### Added
