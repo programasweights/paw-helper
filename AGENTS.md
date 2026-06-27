@@ -41,10 +41,39 @@ mypack/
   programs.json      # compiled PAW program IDs (written by `paw-helper compile`)
 ```
 
+## Where it runs (your website can stay where it is)
+
+The helper is two decoupled pieces, and confusing them is the #1 adoption blocker:
+
+- The **widget** (frontend) - a one-line `<script>` you add to your site's pages. Your
+  site can live ANYWHERE: GitHub Pages, Netlify, Vercel, an S3 bucket, a Jekyll/Hugo
+  static site, or a dynamic app. A static site is completely fine.
+- The **backend** (this project) - a small always-on HTTP service the widget calls over
+  HTTPS (cross-origin via CORS). It runs on a host YOU control with a **public IP**: any
+  small Linux VPS or always-on machine. It can NOT run on GitHub Pages / static hosting
+  (those serve files only, they can't run a server).
+
+So "my site is on GitHub Pages" is not a blocker - the page just calls the backend on a
+separate host cross-origin (this is exactly how yuntiandeng.com, a GitHub Pages site,
+talks to its helper backend).
+
+You do NOT need a powerful server. With `PAW_HELPER_INFERENCE_BACKEND=remote_infer` the
+box offloads inference to the PAW API, so it is a thin proxy and a tiny (~1 vCPU) VPS is
+plenty. With `local_sdk` it runs the model on its own CPU (give it more RAM/cores).
+
+**Agent: before the deploy step, ASK the user where the backend should run** - "Do you
+have a machine with a public IP you control (a small VPS, a cloud VM, or an always-on
+box)? GitHub Pages can host your site but not this backend." If they give you SSH access
+to that host, you can run the deploy steps (Step 5) for them. If they have no host,
+point them at a small VPS (any provider) - with `remote_infer` the cheapest tier works.
+
 ## Prerequisites
 
 - Python 3.10+. That is it - **no PAW account required**. Compiling and serving both
   work anonymously.
+- A **host for the backend**: a machine with a public IP you control (a small VPS or an
+  always-on box). Your website itself can stay on GitHub Pages / any static host - only
+  the backend needs the server.
 - Optional: a PAW API key raises the anonymous compile rate limit (20/hr -> 60/hr) and
   lets you name programs. Generate one at `https://programasweights.com/settings` and
   `export PAW_API_KEY=paw_sk_...`. You only need it if you hit the anonymous compile
