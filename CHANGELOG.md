@@ -4,6 +4,27 @@ All notable changes to paw-helper are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/). The content-pack contract has its own
 `schema_version` (currently 1), bumped independently of the package version.
 
+## [0.7.0] - 2026-06-26
+
+### Added
+- `paw-helper init <dir>`: scaffold a new content pack from the packaged starter pack
+  (a copy of `examples/minimal`, now shipped as package data so `init` works from a
+  `pip install`, not just a source checkout). Removes the old
+  `cp -r .../examples/minimal` step.
+- Offline **mock inference backend** (`PAW_HELPER_INFERENCE_BACKEND=mock`): returns
+  canned, deterministic outputs branched on the program ROLE, so
+  `init -> validate -> serve` answers end to end with NO PAW account, API key, or
+  compiled `programs.json`. In mock mode the pipeline synthesizes program IDs from the
+  config, so it boots without `programs.json` (otherwise `serve` requires it). Never
+  the default; for demos/tests only.
+- `AGENTS.md`: an agent-facing, end-to-end setup guide (init -> author -> validate ->
+  compile -> deploy -> embed) with a copy-paste prompt and a common-errors table, for
+  friction-free, agent-driven adoption on any personal website.
+
+### Notes
+- The packaged scaffold (`paw_helper/scaffold/minimal`) is kept byte-identical to
+  `examples/minimal` by a drift test.
+
 ## [0.6.2] - 2026-06-25
 
 ### Fixed

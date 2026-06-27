@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "paw-helper"
-version = "0.6.2"
+version = "0.7.0"
 description = "A reusable 'ask about this site' helper backend, built as a pipeline of ProgramAsWeights programs."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -37,7 +37,13 @@ paw-helper = "paw_helper.cli:main"
 packages = ["paw_helper", "paw_helper.server"]
 
 [tool.setuptools.package-data]
-paw_helper = ["server/static/*.js", "deploy/*"]
+paw_helper = [
+    "server/static/*.js",
+    "deploy/*",
+    "scaffold/minimal/*",
+    "scaffold/minimal/specs/*",
+    "scaffold/minimal/bench/*",
+]
 
 [tool.ruff]
 line-length = 120

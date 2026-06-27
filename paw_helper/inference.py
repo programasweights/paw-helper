@@ -19,6 +19,47 @@ class InferenceBackend(Protocol):
         """Run a named helper program and return stripped text output."""
 
 
+# Backend mode aliases that select the offline/demo MockBackend (no PAW account,
+# API key, or compiled programs.json required).
+_MOCK_MODES = {"mock", "offline", "echo"}
+
+
+def is_mock_mode(mode: str | None = None) -> bool:
+    """True when the (env-)selected backend is the offline mock. The pipeline reads
+    this to skip the programs.json requirement and run the no-compile demo."""
+    mode = (mode or os.environ.get("PAW_HELPER_INFERENCE_BACKEND") or "local_sdk").strip().lower()
+    return mode in _MOCK_MODES
+
+
+class MockBackend:
+    """Offline/demo backend: deterministic canned outputs with NO PAW account, API
+    key, or compiled programs.json. Lets `paw-helper init -> validate -> serve` answer
+    end-to-end so an adopter sees the shape before compiling anything. It branches on
+    the program ROLE name (the pipeline always passes the role name, never an ID):
+    validators say "yes", classifiers/routers/selectors/gates take the answer path,
+    and every answerer returns a fixed placeholder string. It is never the default and
+    must be selected explicitly via PAW_HELPER_INFERENCE_BACKEND=mock."""
+
+    PLACEHOLDER = (
+        "This is a placeholder answer from the paw-helper mock backend. Edit your "
+        "content pack, then `paw-helper compile` and serve with a real backend "
+        "(local_sdk or remote_infer) for grounded answers."
+    )
+
+    def __init__(self, programs: dict[str, str] | None = None):
+        self.programs = programs or {}
+
+    def infer(self, name: str, text: str, max_tokens: int) -> str:
+        n = name.lower()
+        if "validator" in n:
+            return "yes"  # keep the answer (backtrack gates on a "yes" verdict)
+        if any(k in n for k in ("classifier", "router", "selector", "gate")):
+            # Route to the freeform answer path / no link / no branch selection, so
+            # the demo deterministically shows an answer regardless of the query.
+            return "question"
+        return self.PLACEHOLDER
+
+
 class LocalSdkBackend:
     """Current behavior: load and run PAW functions in this Python process."""
 
@@ -115,7 +156,9 @@ def get_backend(programs: dict[str, str], mode: str | None = None) -> InferenceB
         return LocalSdkBackend(programs)
     if mode in {"remote", "remote_infer", "api", "infer"}:
         return RemoteInferBackend(programs)
+    if mode in _MOCK_MODES:
+        return MockBackend(programs)
     raise ValueError(
         "unknown PAW_HELPER_INFERENCE_BACKEND="
-        f"{mode!r}; expected local_sdk or remote_infer"
+        f"{mode!r}; expected local_sdk, remote_infer, or mock"
     )

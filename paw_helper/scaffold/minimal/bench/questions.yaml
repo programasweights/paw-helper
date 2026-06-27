@@ -1,0 +1,13 @@
+# Tiny open-ended benchmark for the example pack (graded by the rubric_checker if
+# you compile one; otherwise illustrative). `expect_answerable: false` must decline.
+
+- query: "what do you work on"
+  rubric_points:
+    - {text: "Mentions on-device / small language models or compiling language into neural functions", required: true}
+
+- query: "where are you based"
+  rubric_points:
+    - {text: "Says Toronto", required: true}
+
+- query: "what is your favorite color"
+  expect_answerable: false

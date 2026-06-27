@@ -1,0 +1,34 @@
+# Minimal example content pack for paw-helper.
+# A single "site" domain about a fictional researcher, with a baked answerer.
+# Validate it with:  paw-helper validate --content examples/minimal
+
+schema_version: 1
+
+default_domain: site
+
+# Page key the widget sends -> default domain. (One domain here, so no router.)
+page_defaults:
+  site: site
+
+# Shared answer validator (checks the answer is on-topic for the question).
+validator: validator
+
+# Per-node-role generation budgets.
+max_tokens:
+  classifier: 8
+  answerer: 200
+  validator: 4
+
+# Spec + input + output share this context window (a PAW constraint).
+token_budget: 2048
+
+# Resilience: validator "no"/empty -> graceful fallback, never a wrong answer.
+resilience:
+  backtrack: true
+
+domains:
+  site:
+    classifier: page_classifier   # link label vs "question"
+    links: links.yaml
+    answerer: answerer
+    facts_mode: baked              # facts compiled into the program (see facts.md)

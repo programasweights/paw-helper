@@ -94,7 +94,19 @@ class Pipeline:
         inference_backend: inference.InferenceBackend | None = None,
     ):
         self.cfg = config or load_config()
-        self.programs = programs if programs is not None else common.load_programs()["programs"]
+        if programs is not None:
+            self.programs = programs
+        elif inference.is_mock_mode():
+            # Offline/demo mode (PAW_HELPER_INFERENCE_BACKEND=mock): no compiled
+            # programs.json required. Synthesize identity IDs from the config's
+            # program names so the pipeline boots AND the `available` filter below is
+            # populated (it keys off names being in self.programs); the mock backend
+            # ignores the IDs. This is what lets `init -> validate -> serve` answer
+            # before the adopter has a PAW key or has run `compile`.
+            from .validate import _program_names
+            self.programs = {n: n for n in _program_names(self.cfg)}
+        else:
+            self.programs = common.load_programs()["programs"]
         self.mt = self.cfg["max_tokens"]
         self.resilience = self.cfg.get("resilience", {})
         # Content-pack providers (the only content-specific Python): how to render

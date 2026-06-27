@@ -1,5 +1,6 @@
 """paw-helper command-line interface.
 
+    paw-helper init     <dir>                       scaffold a new content pack
     paw-helper validate [--content DIR]            check a content pack (fail fast)
     paw-helper compile  [--content DIR] [--compiler X] [--only ...] [--all]
     paw-helper serve    [--content DIR] [--host H] [--port P]
@@ -22,6 +23,43 @@ from . import __version__, common
 def _resolve_content(arg: str | None) -> pathlib.Path:
     path = arg or os.environ.get("PAW_HELPER_CONTENT") or os.getcwd()
     return common.set_content_dir(path)
+
+
+def _scaffold_dir() -> pathlib.Path:
+    """The packaged starter content pack copied by `init`. Ships inside the package
+    (so it works from a `pip install`); falls back to the repo's example pack when
+    running from a source checkout that has not installed the package data."""
+    packaged = common.PACKAGE_DIR / "scaffold" / "minimal"
+    if packaged.exists():
+        return packaged
+    return common.PACKAGE_DIR.parent / "examples" / "minimal"
+
+
+def _cmd_init(args) -> int:
+    import shutil
+
+    dst = pathlib.Path(args.dir).resolve()
+    if dst.exists() and any(dst.iterdir()):
+        print(f"error: {dst} already exists and is not empty", file=sys.stderr)
+        return 1
+    src = _scaffold_dir()
+    if not src.exists():
+        print(f"error: scaffold not found at {src}", file=sys.stderr)
+        return 1
+    shutil.copytree(src, dst, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+                    dirs_exist_ok=True)
+    print(
+        f"Created content pack at {dst}\n\n"
+        "Next steps:\n"
+        f"  paw-helper validate --content {dst}\n"
+        f"  PAW_HELPER_INFERENCE_BACKEND=mock paw-helper serve --content {dst}   "
+        "# offline demo, no PAW key\n"
+        "  # then edit config.yaml / links.yaml / facts.md / specs/ for your site, and:\n"
+        f"  paw-helper compile --content {dst} --compiler paw-ft-bs48            "
+        "# needs a PAW API key\n"
+        f"  paw-helper serve --content {dst}"
+    )
+    return 0
 
 
 def _cmd_validate(args) -> int:
@@ -109,6 +147,9 @@ def main(argv=None) -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
 
+    pn = sub.add_parser("init", parents=[parent], help="Scaffold a new content pack from the example.")
+    pn.add_argument("dir", help="Target directory to create (must not exist or be empty).")
+
     sub.add_parser("validate", parents=[parent], help="Validate a content pack (fail fast).")
 
     pc = sub.add_parser("compile", parents=[parent], help="Compile the pack's programs into programs.json.")
@@ -140,6 +181,7 @@ def main(argv=None) -> int:
 
     args = ap.parse_args(argv)
     return {
+        "init": _cmd_init,
         "validate": _cmd_validate,
         "compile": _cmd_compile,
         "serve": _cmd_serve,

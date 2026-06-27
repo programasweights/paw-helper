@@ -18,6 +18,15 @@ It is the extracted, generic backend behind the helper on
 See [docs/DESIGN.md](docs/DESIGN.md) and [docs/adr/](docs/adr) for the architecture
 and the load-bearing decisions.
 
+**Setting one up for your own site?** [AGENTS.md](AGENTS.md) is a step-by-step guide
+written for an AI coding agent (e.g. Cursor) to do it end to end. Or paste this prompt
+to your agent:
+
+> I want to add an "ask about my website" helper (built on paw-helper, powered by
+> ProgramAsWeights) to my site. Read the setup guide at
+> https://programasweights.com/paw-helper/AGENTS.md and help me create, compile, and
+> deploy a content pack for my website. [Describe your site.]
+
 ## Install
 
 ```bash
@@ -29,16 +38,19 @@ pip install paw-helper --extra-index-url https://pypi.programasweights.com/simpl
 ## Quickstart
 
 ```bash
-# 1. Start from the example pack (or author your own - see "Content pack" below).
-cp -r $(python -c "import paw_helper,os;print(os.path.dirname(paw_helper.__file__))")/../examples/minimal mypack
+# 1. Scaffold a starter content pack (or author your own - see "Content pack" below).
+paw-helper init mypack
 
 # 2. Validate the pack (fails fast with actionable errors, before any model call).
 paw-helper validate --content mypack
 
-# 3. Compile your programs (needs network + the PAW API). Pins programs.json.
+# 3a. See it answer with NO PAW key (canned mock backend, no compile needed):
+PAW_HELPER_INFERENCE_BACKEND=mock paw-helper serve --content mypack --port 8088
+
+# 3b. When ready: compile your programs (needs network + the PAW API). Pins programs.json.
 paw-helper compile --content mypack --compiler paw-ft-bs48
 
-# 4. Serve. /ask, /feedback, /health, and /widget.js.
+# 4. Serve for real. /ask, /feedback, /health, and /widget.js.
 paw-helper serve --content mypack --port 8088
 
 # 5. Embed the widget on any page:
@@ -147,6 +159,17 @@ paw-helper serve --content mypack
 
 Both modes use the same `Pipeline`, logs, and eval harness; only the PAW call
 transport changes.
+
+For a credential-free demo (e.g. to see the widget answer before you have a PAW key or
+a compiled `programs.json`), use the offline mock backend, which returns canned,
+deterministic outputs:
+
+```bash
+PAW_HELPER_INFERENCE_BACKEND=mock paw-helper serve --content mypack
+```
+
+It is never the default and is for demos/tests only - real answers need `local_sdk` or
+`remote_infer` with compiled programs.
 
 ### Reviewing Real Traffic
 
