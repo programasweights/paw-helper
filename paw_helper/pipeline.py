@@ -498,12 +498,22 @@ class Pipeline:
             return {"result": {"type": "none"}, "domain": None, "route": None, "verdict": None}
 
         branches = self._branches(page)
-        if branches:
+        if branches and getattr(self.inference_backend, "parallel", False):
+            # Concurrency is a win only for I/O-bound backends (remote_infer): the main
+            # pipeline and each branch overlap over the network, so the branch costs ~0
+            # wall time.
             with ThreadPoolExecutor(max_workers=1 + len(branches)) as ex:
                 main_fut = ex.submit(self._main, q, page)
                 branch_futs = [ex.submit(self._run_branch, b, q) for b in branches]
                 out = main_fut.result()
                 results = [bf.result() for bf in branch_futs]
+            out = self._aggregate(q, out, [r for r in results if r])
+        elif branches:
+            # In-process backends (local_sdk) serialize on one model instance, and CPU
+            # llama.cpp under Python threads is ~15-35x SLOWER (measured). Run the main
+            # pipeline and branches SEQUENTIALLY - identical result, far faster.
+            out = self._main(q, page)
+            results = [self._run_branch(b, q) for b in branches]
             out = self._aggregate(q, out, [r for r in results if r])
         else:
             out = self._main(q, page)

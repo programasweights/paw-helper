@@ -15,6 +15,14 @@ import httpx
 
 
 class InferenceBackend(Protocol):
+    # Whether running multiple infer() calls from concurrent threads is a WIN. True only
+    # for backends where calls are I/O-bound and independent (remote_infer: each call is
+    # an HTTP POST offloaded to the PAW server). In-process backends (local_sdk) serialize
+    # on one model instance AND llama.cpp CPU inference degrades catastrophically under
+    # Python threads (measured ~15-35x slower), so the pipeline runs branches SEQUENTIALLY
+    # for them.
+    parallel: bool = False
+
     def infer(self, name: str, text: str, max_tokens: int) -> str:
         """Run a named helper program and return stripped text output."""
 
@@ -40,6 +48,8 @@ class MockBackend:
     and every answerer returns a fixed placeholder string. It is never the default and
     must be selected explicitly via PAW_HELPER_INFERENCE_BACKEND=mock."""
 
+    parallel = False
+
     PLACEHOLDER = (
         "This is a placeholder answer from the paw-helper mock backend. Edit your "
         "content pack, then `paw-helper compile` and serve with a real backend "
@@ -63,6 +73,8 @@ class MockBackend:
 class LocalSdkBackend:
     """Current behavior: load and run PAW functions in this Python process."""
 
+    parallel = False  # one model instance + a lock; threads make CPU llama.cpp ~20x slower
+
     def __init__(self, programs: dict[str, str]):
         self.programs = programs
         self._fns: dict[str, object] = {}
@@ -82,6 +94,8 @@ class LocalSdkBackend:
 
 class RemoteInferBackend:
     """Run PAW inference through the central PAW API `/api/v1/infer` endpoint."""
+
+    parallel = True  # each call is an independent HTTP POST -> branches overlap (no lock)
 
     def __init__(
         self,

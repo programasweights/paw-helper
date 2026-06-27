@@ -4,6 +4,18 @@ All notable changes to paw-helper are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/). The content-pack contract has its own
 `schema_version` (currently 1), bumped independently of the package version.
 
+## [0.8.1] - 2026-06-27
+
+### Fixed
+- Branch execution is now backend-aware. The main pipeline + branches run CONCURRENTLY
+  (ThreadPoolExecutor) only when the inference backend sets `parallel = True` (i.e.
+  `remote_infer`, where each call is an independent HTTP POST and overlaps over the
+  network). For in-process backends (`local_sdk`) it now runs SEQUENTIALLY: those
+  serialize on one model instance, and CPU `llama.cpp` under Python threads is
+  catastrophically slower - measured **~15-35x** (e.g. 32s vs 1.7s for one course query)
+  on the default backend. Same result either way; only the scheduling changes.
+- Backends declare a `parallel` flag (`local_sdk`/`mock` = False, `remote_infer` = True).
+
 ## [0.8.0] - 2026-06-27
 
 ### Added

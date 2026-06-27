@@ -1,5 +1,7 @@
 """Parallel-branch + aggregator unit tests (offline; a stub backend, no model)."""
 
+import pytest
+
 from paw_helper import common, pipeline
 
 
@@ -220,8 +222,13 @@ def test_branches_selection(booted_pack):
     assert p._branches("site") == []                            # provider not registered
 
 
-def test_run_aggregates_concurrently(booted_pack, monkeypatch):
+@pytest.mark.parametrize("parallel", [True, False])
+def test_run_aggregates_branches(booted_pack, monkeypatch, parallel):
+    """Both backend modes produce the same aggregated result: the threaded path (used
+    only for parallel/remote backends) and the sequential path (in-process backends,
+    where threading CPU llama.cpp is ~20x slower) must be behavior-identical."""
     p = _pipe(booted_pack, {"g": "yes"})
+    p.inference_backend.parallel = parallel
     p.programs["g"] = "stub"
     p.search_providers["fake"] = lambda q: [{**_ITEM, "score": 9}]
     p.cfg["domains"]["site"]["parallel_branches"] = [
