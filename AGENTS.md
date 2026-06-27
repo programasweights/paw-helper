@@ -1,88 +1,51 @@
 # paw-helper - Agent Setup Guide
 
-This guide is written for an AI coding agent (e.g. Cursor) to set up an **"ask about
-my website" helper** for the user's own site, end to end, with minimal back-and-forth.
+You are an AI coding agent setting up an "ask about my website" helper for the user's own site, end to end. This file is the procedure; follow it top to bottom, resolving the inputs below first.
 
-`paw-helper` is a small, self-hosted backend: visitors type a question in a widget,
-and it answers in natural language grounded in facts you provide, or routes them to
-the right link. It is built as a pipeline of [ProgramAsWeights](https://programasweights.com)
-(PAW) programs (tiny neural functions that run locally). One backend can serve many
-sites via CORS, and a `<script>` tag drops the widget onto any page.
+`paw-helper` is a small, self-hosted backend: visitors ask a question in an embedded widget and get a natural-language answer grounded in facts you provide, or a link to the right page. It is a pipeline of [ProgramAsWeights](https://programasweights.com) (PAW) programs - tiny neural functions that run locally. One backend can serve many sites via CORS. It is general-purpose: nothing here assumes a particular person or site, so fill everything from the user's own website.
 
-It is **general-purpose**: nothing here assumes a particular person, employer, or
-site. Fill the placeholders from the user's own website.
+What you will produce: a content pack (the user's specs, facts, and links), compiled PAW programs, a deployed backend, and a one-line widget embedded on the user's site.
 
-## Copy-paste prompt (for the site owner)
+## Work posture: minimize friction
 
-If you are the site owner, paste this to your agent to start:
+Infer from what you can already see - the user's repo, their live site, where it is hosted - and use sensible defaults. Ask the user only when you are genuinely blocked. Read their existing site/repo to draft the facts and links and then confirm, rather than interrogating item by item; pick a default and state it rather than asking; never ask for a PAW key unless a rate limit actually forces it.
 
-> I want to add an "ask about my website" helper (built on paw-helper, powered by
-> ProgramAsWeights) to my site. Read the setup guide at
-> https://programasweights.com/paw-helper/AGENTS.md and help me create, compile, and
-> deploy a content pack for my website. [Describe your site: what it's about, the key
-> links, and what visitors should be able to ask.]
+## Inputs and decisions (resolve these first)
 
-(If that URL is unavailable, use the raw repo copy:
-`https://raw.githubusercontent.com/programasweights/paw-helper/main/AGENTS.md`.)
+- Site content: what the site is about, its key links (cv/resume, github/code, contact, publications, blog, ...), and the facts visitors should get. Draft these from the user's existing site/repo, then confirm.
+- Backend host: the backend is an always-on HTTP service that needs a host with a public IP and shell access. Decide where it runs by inferring, not reflexively asking:
+  - If the site already runs on a server the user controls (a VPS, cloud VM, or dynamic-app host), deploy the backend on that same machine - just propose it.
+  - If the site is static-only (GitHub Pages, Netlify/Vercel static, S3), there is no server to reuse: identify a separate host. Only here ask "Do you have a machine with a public IP you control (a small VPS or always-on box)?" A static site is fine; only the backend needs a server.
+  - A tiny (~1 vCPU) box is enough when you use `remote_infer` (below).
+- Inference backend (pick a default and state it; do not block on it): `local_sdk` (default) runs the model in-process on the host CPU - self-contained, no key, but it serializes on one model instance so it handles concurrent visitors poorly. `remote_infer` offloads inference to the PAW API - a thin proxy that runs on a tiny box and handles concurrency far better. Prefer `remote_infer` when the host is small or you expect concurrent visitors; `local_sdk` when you want zero external calls at serve time.
+- PAW account/key: not required. Compiling and serving work anonymously. A key only raises the anonymous compile limit (20/hr -> 60/hr) and is recommended for `remote_infer` under load; generate one at https://programasweights.com/settings and `export PAW_API_KEY=paw_sk_...`. Do not ask for it unless needed.
+- Deploy access: if you will deploy for the user, confirm you have SSH access to the host.
+- Your working machine needs Python 3.10+.
 
-## What you will build
+## Architecture
 
-A **content pack**: a directory of your site's specs, facts, and links that the
-framework loads. The framework holds no per-site knowledge; everything site-specific
-lives in the pack.
+Two decoupled pieces, connected over HTTPS with CORS:
 
 ```
-mypack/
-  config.yaml        # the pipeline graph: domains, page defaults, budgets
-  specs/*.txt        # one spec per program (classifier, answerer, validator, ...)
-  facts.md           # the facts your answerer is allowed to use
-  links.yaml         # routable links (cv, github, contact, feedback, ...)
-  providers.py       # the only Python; registers runtime-fact providers (RAG seam)
-  programs.json      # compiled PAW program IDs (written by `paw-helper compile`)
+[ user's site: GitHub Pages / Netlify / any host ]  --- /ask (HTTPS + CORS) -->  [ paw-helper backend ]
+   embeds  <script src=".../widget.js">                                          a host with a public IP
+                                                                                 /ask /feedback /health /widget.js
 ```
 
-## Where it runs (your website can stay where it is)
+The site can live anywhere (static or dynamic); only the backend needs a server. That is why "my site is on GitHub Pages" is never a blocker.
 
-The helper is two decoupled pieces, and confusing them is the #1 adoption blocker:
+## Procedure overview
 
-- The **widget** (frontend) - a one-line `<script>` you add to your site's pages. Your
-  site can live ANYWHERE: GitHub Pages, Netlify, Vercel, an S3 bucket, a Jekyll/Hugo
-  static site, or a dynamic app. A static site is completely fine.
-- The **backend** (this project) - a small always-on HTTP service the widget calls over
-  HTTPS (cross-origin via CORS). It runs on a host YOU control with a **public IP**: any
-  small Linux VPS or always-on machine. It can NOT run on GitHub Pages / static hosting
-  (those serve files only, they can't run a server).
+1. Get the framework (clone + install).
+2. Author the content pack (the bulk of the work).
+3. Validate, then compile (pins `programs.json`).
+4. Serve and smoke-test locally.
+5. Deploy to the host and embed the widget on the site.
+6. Iterate from real traffic.
 
-So "my site is on GitHub Pages" is not a blocker - the page just calls the backend on a
-separate host cross-origin (this is exactly how yuntiandeng.com, a GitHub Pages site,
-talks to its helper backend).
+## 1. Get the framework
 
-You do NOT need a powerful server. With `PAW_HELPER_INFERENCE_BACKEND=remote_infer` the
-box offloads inference to the PAW API, so it is a thin proxy and a tiny (~1 vCPU) VPS is
-plenty. With `local_sdk` it runs the model on its own CPU (give it more RAM/cores).
-
-**Agent: before the deploy step, ASK the user where the backend should run** - "Do you
-have a machine with a public IP you control (a small VPS, a cloud VM, or an always-on
-box)? GitHub Pages can host your site but not this backend." If they give you SSH access
-to that host, you can run the deploy steps (Step 5) for them. If they have no host,
-point them at a small VPS (any provider) - with `remote_infer` the cheapest tier works.
-
-## Prerequisites
-
-- Python 3.10+. That is it - **no PAW account required**. Compiling and serving both
-  work anonymously.
-- A **host for the backend**: a machine with a public IP you control (a small VPS or an
-  always-on box). Your website itself can stay on GitHub Pages / any static host - only
-  the backend needs the server.
-- Optional: a PAW API key raises the anonymous compile rate limit (20/hr -> 60/hr) and
-  lets you name programs. Generate one at `https://programasweights.com/settings` and
-  `export PAW_API_KEY=paw_sk_...`. You only need it if you hit the anonymous compile
-  limit, or if you serve the shared `remote_infer` backend under load.
-
-## Step 0 - Get the framework
-
-The dependable path is a clone + editable install (the PAW SDK resolves only via the
-PAW package index):
+Clone and install editable (the PAW SDK resolves only via the PAW package index):
 
 ```bash
 git clone https://github.com/programasweights/paw-helper && cd paw-helper
@@ -90,172 +53,133 @@ python -m venv venv && . venv/bin/activate
 pip install -e ".[dev]" --extra-index-url https://pypi.programasweights.com/simple/
 ```
 
-(A published `pip install paw-helper --extra-index-url https://pypi.programasweights.com/simple/`
-is the future path; the clone also gives you the example pack and tests.)
+A published `pip install paw-helper --extra-index-url https://pypi.programasweights.com/simple/` is the future path; the clone also gives you the example pack and tests.
 
-## Step 1 - 60-second offline demo (no network)
+## 2. Author the content pack
 
-Prove the whole shape works with zero network calls. The `mock` backend returns canned
-answers, so it needs no compile and no `programs.json`:
+Scaffold a starter pack, then edit it for the user's site:
 
 ```bash
-paw-helper init mypack                                   # scaffold a starter pack
-paw-helper validate --content mypack                     # fail-fast contract check
-PAW_HELPER_INFERENCE_BACKEND=mock paw-helper serve --content mypack --port 8088
-# in another shell:
-curl -s localhost:8088/health
-curl -s -X POST localhost:8088/ask -H 'Content-Type: application/json' \
-  -d '{"query":"what do you work on","page":"site"}'
+paw-helper init mypack
 ```
 
-You should get a placeholder answer. Now make it real.
+Optional sanity check (no network, no account): serve the freshly-scaffolded pack with the canned `mock` backend to see the end-to-end shape before authoring - `PAW_HELPER_INFERENCE_BACKEND=mock paw-helper serve --content mypack --port 8088`, then `POST /ask`.
 
-## Step 2 - Author the content pack
+The pack is a directory the framework loads; everything site-specific lives here (the framework holds no per-site knowledge):
 
-Edit the files `init` created. The contract (enforced by `paw-helper validate`):
+```
+mypack/
+  config.yaml      # the pipeline graph: domains, page defaults, budgets
+  specs/*.txt      # one spec per program (classifier, answerer, validator, ...)
+  facts.md         # the facts your answerer is allowed to use
+  links.yaml       # routable links (cv, github, contact, feedback, ...)
+  providers.py     # the only Python; registers runtime-fact providers (RAG seam)
+  programs.json    # compiled PAW program IDs (written by `paw-helper compile`)
+```
+
+Edit each file to fit the user's site. The contract (enforced by `paw-helper validate`):
 
 ### `config.yaml`
 
-Required keys: `schema_version` (keep `1`), `default_domain`, `domains`, `max_tokens`.
-Each domain needs `classifier`, `answerer`, `links` (optional: `validator` at the top
-level, `token_budget`, `resilience`, `page_defaults`, `facts_mode`). For a single
-personal site, the scaffold's one `site` domain with `facts_mode: baked` is all you
-need. Add more domains (and a `domain_router`) only for multi-site/multi-topic setups.
+Required keys: `schema_version` (keep `1`), `default_domain`, `domains`, `max_tokens`. Each domain needs `classifier`, `answerer`, `links`; optional are a top-level `validator`, `token_budget`, `resilience`, `page_defaults`, and per-domain `facts_mode`. For a single personal site, the scaffold's one `site` domain with `facts_mode: baked` is all you need. Add more domains (and a `domain_router`) only for multi-site or multi-topic setups.
 
 ### `links.yaml`
 
-One entry per routable destination. Each: `url`, `name`, `label`, `description`,
-`purpose` (the `purpose` line is what the classifier reads). Use `kind: feedback`
-(no URL) for a feedback form, and `registry: false` to keep a link classifier-only
-(never inlined in prose). Cover the common personal-site shapes: cv/resume, github/
-code, contact/email, publications/scholar, blog, feedback.
+One entry per routable destination, each with `url`, `name`, `label`, `description`, and `purpose` (the `purpose` line is what the classifier reads). Use `kind: feedback` (no URL) for a feedback form, and `registry: false` to keep a link classifier-only (never inlined in prose). Cover the common personal-site shapes: cv/resume, github/code, contact/email, publications/scholar, blog, feedback.
 
 ### `facts.md`
 
-The facts your answerer may use - bio, research/projects, availability ("taking
-students/clients"), location, anything you want answered. Keep it factual and concise.
-HTML comments (`<!-- ... -->`) are stripped at compile, so use them for editor notes.
-The answerer is instructed to decline ("I don't have that information.") when a
-question isn't covered - this is the anti-hallucination guard; keep it.
+The facts your answerer may use: bio, research/projects, availability ("taking students/clients"), location, anything you want answered. Keep it factual and concise. HTML comments (`<!-- ... -->`) are stripped at compile, so use them for editor notes. The answerer is instructed to decline ("I don't have that information.") when a question is not covered - this is the anti-hallucination guard; keep it.
 
 ### `specs/*.txt`
 
-One spec per program referenced by `config.yaml`. Use the placeholders the framework
-fills from your pack - `{{LINKS}}` (classifier label list), `{{LINK_REGISTRY}}`
-(name->url the answerer may hyperlink), `{{FACTS}}` (your `facts.md`). After composing,
-no other `{{...}}` may remain. Each spec is a short description plus a few
-`Input:`/`Output:` examples (this is how PAW specs are written - see
-`https://programasweights.com/AGENTS.md`). Edit the examples to match your site's
-real questions.
+One spec per program referenced by `config.yaml`. Use the placeholders the framework fills from your pack: `{{LINKS}}` (the classifier's label list), `{{LINK_REGISTRY}}` (name -> url the answerer may hyperlink), and `{{FACTS}}` (your `facts.md`). After composing, no other `{{...}}` may remain. Each spec is a short description plus a few `Input:`/`Output:` examples (this is how PAW specs are written - see https://programasweights.com/AGENTS.md). Edit the examples to match the site's real questions.
 
 ### `providers.py`
 
-Exports `CONTEXT_PROVIDERS` (a dict; leave it `{}` for a baked single-site pack). Only
-add a provider when a domain sets `facts_mode: runtime` and `context: <key>` to inject
-volatile facts at inference time (deadlines, a roster, retrieved documents - the RAG
-seam). The file's docstring shows the shape.
+Exports `CONTEXT_PROVIDERS` (a dict; leave it `{}` for a baked single-site pack). Add a provider only when a domain sets `facts_mode: runtime` and `context: <key>` to inject volatile facts at inference time (deadlines, a roster, retrieved documents - the RAG seam). The file's docstring shows the shape.
 
-Re-run `paw-helper validate --content mypack` until it reports OK. It collects ALL
-errors at once with the exact key/file at fault - fix them and re-run.
+Re-run `paw-helper validate --content mypack` until it reports OK. It collects every error at once with the exact key or file at fault.
 
-## Step 3 - Compile
+## 3. Compile
 
 ```bash
 paw-helper compile --content mypack --compiler paw-ft-bs48
 ```
 
-This compiles each spec into a pinned PAW program (over the network, on the hosted PAW
-compiler) and writes `mypack/programs.json` (commit it). It works **anonymously** - no
-account needed (20 compiles/hr; `export PAW_API_KEY=paw_sk_...` for a higher limit).
-`paw-ft-bs48` is the highest-accuracy compiler (~2-5 min/program). For fast iteration on
-a spec, you can omit `--compiler` to use the quick default, then recompile the final
-specs with `paw-ft-bs48` (same runtime, drop-in). Commit `programs.json` so the server
-runs exactly what you compiled.
+This compiles each spec into a pinned PAW program (over the network, on the hosted PAW compiler) and writes `mypack/programs.json` - commit it so the server runs exactly what you compiled. It works anonymously (20 compiles/hr; set `PAW_API_KEY` for a higher limit). `paw-ft-bs48` is the highest-accuracy compiler (~2-5 min/program); for fast iteration on a spec you can omit `--compiler` to use the quick default, then recompile the final specs with `paw-ft-bs48` (same runtime, drop-in).
 
-## Step 4 - Serve and smoke-test
+## 4. Serve and smoke-test
 
 ```bash
 paw-helper serve --content mypack --port 8088
 curl -s localhost:8088/health        # {"status":"ok", ...}
 curl -s -X POST localhost:8088/ask -H 'Content-Type: application/json' \
-  -d '{"query":"<a real question about your site>","page":"site"}'
+  -d '{"query":"<a real question about the site>","page":"site"}'
 ```
 
-Eyeball the answers against your facts. Tighten specs/facts and re-compile as needed.
+Eyeball the answers against the facts; tighten specs/facts and recompile until they are right.
 
-### Two ways to serve (inference backends)
+Choose where each PAW call runs with `PAW_HELPER_INFERENCE_BACKEND`: `local_sdk` (default) runs in-process on the host CPU (self-contained, but serializes on one model instance, so concurrent visitors queue), or `remote_infer` offloads to the PAW API (`/api/v1/infer`) so the work runs on hosted GPUs and concurrency is handled far better (set a valid `PAW_API_KEY` under load). Same pipeline, logs, and programs either way - only the transport changes. (`mock` is the third, demo-only backend.)
 
-Set `PAW_HELPER_INFERENCE_BACKEND` to choose where each PAW call runs:
+## 5. Deploy and embed
 
-- `local_sdk` (default) - runs the programs **in-process on your own CPU** via the PAW
-  SDK. Fully self-contained (no per-request network), and works anonymously. Caveat:
-  inference is serialized through one local model instance, so it is **less amenable to
-  concurrent requests** - several visitors at once queue behind each other. Best for a
-  low-traffic personal site or a box with spare CPU.
+Deploy the backend on the host from the Inputs section. Templates are in `paw_helper/deploy/`: a systemd unit, an nginx vhost (add TLS with `certbot`), and an nginx `sub_filter` embed example. If you have SSH access, run these for the user. Key settings:
 
-  ```bash
-  PAW_HELPER_INFERENCE_BACKEND=local_sdk paw-helper serve --content mypack
-  ```
+- `HELPER_ALLOWED_ORIGINS` - comma-separated; add EVERY site origin that embeds the widget. This is the CORS allow-list for `/ask`, `/feedback`, `/health`.
+- `PAW_API_KEY` - set it in the service environment when serving with `remote_infer`; an anonymous key hits a strict rate limit and yields blank answers under load.
 
-- `remote_infer` - **offloads inference to the PAW server** (`/api/v1/infer`), so the
-  hosted GPUs do the work and concurrent requests are handled far better. Each `/ask`
-  makes a network call; under real load set a valid `PAW_API_KEY` (an anonymous key hits
-  a strict per-IP rate limit -> blank answers). Best when you expect concurrency or your
-  host has little CPU.
-
-  ```bash
-  PAW_HELPER_INFERENCE_BACKEND=remote_infer paw-helper serve --content mypack
-  ```
-
-Same pipeline, logs, and programs either way - only the PAW-call transport changes.
-(`mock` is the third, demo-only backend from Step 1.)
-
-## Step 5 - Deploy and embed
-
-Templates are in `paw_helper/deploy/` (a systemd unit, an nginx vhost, and an
-nginx `sub_filter` embed example). Key settings:
-
-- `HELPER_ALLOWED_ORIGINS` - comma-separated; add EVERY site origin that embeds the
-  widget (this is the CORS allow-list for `/ask`, `/feedback`, `/health`).
-- `PAW_API_KEY` - set it in the service environment if you serve with
-  `PAW_HELPER_INFERENCE_BACKEND=remote_infer`; an anonymous key hits a strict rate
-  limit and yields blank answers under load.
-
-Embed on any page:
+Embed on the site (a static page, a Jekyll/Hugo include, or any HTML):
 
 ```html
 <script src="https://helper.<you>.com/widget.js"
-        data-page="site" data-name="<Your Name>" data-email="<you@example.com>"></script>
+        data-page="site" data-name="<Site Owner>" data-email="<you@example.com>"></script>
 ```
 
-To fully customize widget copy/presets, drop your own `widget.js` at the pack root; the
-server serves it in place of the packaged default. For an app whose HTML you don't
-control, inject the script with nginx `sub_filter` (see `deploy/embed.nginx.example`).
+To customize the widget copy/presets, drop your own `widget.js` at the pack root and the server serves it in place of the default. For an app whose HTML you do not control, inject the script with nginx `sub_filter` (see `deploy/embed.nginx.example`).
 
-## Step 6 - Improve from real traffic
+## 6. Iterate from real traffic
 
-The server logs one JSON line per `/ask` to `queries.jsonl`. Use these to refine:
+The server appends one JSON line per `/ask` to `queries.jsonl`. Use it to find gaps and refine the facts/specs:
 
 ```bash
 paw-helper review --content mypack queries.jsonl --feedback feedback.jsonl
 paw-helper ingest --content mypack queries.jsonl --batch 20   # dedup for a benchmark
 ```
 
+## Definition of done
+
+- `paw-helper validate --content mypack` reports OK.
+- `programs.json` is compiled and committed.
+- `/health` returns ok, and `/ask` returns answers grounded in the facts (eyeball several real questions; recompile until correct).
+- The backend is served over HTTPS on the host.
+- Every site origin that embeds the widget is in `HELPER_ALLOWED_ORIGINS`.
+- The widget renders on the live site and answers end to end.
+
 ## Common errors
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | `serve` crashes: `FileNotFoundError: programs.json` | Pack not compiled | Run `paw-helper compile`, or use `PAW_HELPER_INFERENCE_BACKEND=mock` for the offline demo. |
-| Blank answers / `429` under load | `remote_infer` with no/invalid `PAW_API_KEY` (anonymous rate limit) | Set a valid `PAW_API_KEY` in the service env. |
+| Blank answers / `429` under load | `remote_infer` with no/invalid `PAW_API_KEY` (anonymous rate limit) | Set a valid `PAW_API_KEY` in the service environment. |
 | Widget loads but `/ask` is blocked in the browser | Embedding origin not allow-listed | Add the site's origin to `HELPER_ALLOWED_ORIGINS`. |
 | `validate`: "unresolved placeholder ({...}) after composing" | A spec uses a `{{...}}` with no source | Use only `{{LINKS}}` / `{{LINK_REGISTRY}}` / `{{FACTS}}`. |
 | `validate`: "missing spec file specs/<name>.txt" | `config.yaml` references a program with no spec | Add `specs/<name>.txt` or remove the reference. |
-| `validate`: "config is missing required key ..." | Missing `schema_version` / `default_domain` / `domains` / `max_tokens` | Add the key (see Step 2). |
-| Compile `429` | Hosted compile rate limit | Wait, or sign in for a higher limit. |
+| `validate`: "config is missing required key ..." | Missing `schema_version` / `default_domain` / `domains` / `max_tokens` | Add the key (see step 2). |
+| Compile `429` | Hosted compile rate limit | Wait, or set `PAW_API_KEY` for a higher limit. |
+| Widget cannot reach the backend | Backend not on a public IP / not behind HTTPS, or firewall closed | Serve it on a host with a public IP and TLS; open the port. |
 
 ## Reference
 
 - `README.md` - human-facing overview and CORS/deploy details.
-- `docs/DESIGN.md` + `docs/adr/` - architecture and the load-bearing decisions.
+- `docs/DESIGN.md` and `docs/adr/` - architecture and the load-bearing decisions.
 - `examples/minimal/` - a complete, valid pack (what `init` copies).
-- `https://programasweights.com/AGENTS.md` - how to write good PAW specs.
+- https://programasweights.com/AGENTS.md - how to write good PAW specs.
+
+## For site owners: share this
+
+Anyone can add this helper to their own site by pasting this prompt to their AI coding agent:
+
+> I want to add an "ask about my website" helper (built on paw-helper, powered by ProgramAsWeights) to my site. Read the setup guide at https://programasweights.com/paw-helper/AGENTS.md and help me create, compile, and deploy a content pack for my website. [Describe your site: what it's about, the key links, and what visitors should be able to ask.]
+
+If that URL is unavailable, use the raw repo copy: https://raw.githubusercontent.com/programasweights/paw-helper/main/AGENTS.md
