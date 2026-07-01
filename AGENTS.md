@@ -128,6 +128,7 @@ Deploy the backend on the host from the Inputs section. Templates are in `paw_he
 
 - `HELPER_ALLOWED_ORIGINS` - comma-separated; add EVERY site origin that embeds the widget. This is the CORS allow-list for `/ask`, `/feedback`, `/health`.
 - `PAW_API_KEY` - set it in the service environment when serving with `remote_infer`; an anonymous key hits a strict rate limit and yields blank answers under load.
+- `HELPER_CACHE_TTL_S` - optional; for a launch or a high-traffic burst set e.g. `60` to cache identical (page, query) answers for a few seconds. Answers are deterministic, so this absorbs repeated questions without changing behavior.
 
 Embed on the site (a static page, a Jekyll/Hugo include, or any HTML):
 

@@ -4,6 +4,16 @@ All notable changes to paw-helper are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/). The content-pack contract has its own
 `schema_version` (currently 1), bumped independently of the package version.
 
+## [0.9.0] - 2026-07-01
+
+### Added
+- Optional short-TTL response cache on `/ask` (`HELPER_CACHE_TTL_S`, default 0 = off;
+  `HELPER_CACHE_MAX`, default 512). Answers are deterministic (temperature 0), so caching
+  identical (page, normalized-query) results for a few seconds absorbs traffic bursts (a
+  launch/demo asks the same questions repeatedly) with no behavior change. Cache hits are
+  still logged (with `cached: true`) so traffic analytics stay complete; only the ~5-10
+  inference calls are skipped. Off by default, so nothing changes unless you opt in.
+
 ## [0.8.1] - 2026-06-27
 
 ### Fixed

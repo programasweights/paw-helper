@@ -21,6 +21,9 @@ Environment=HELPER_FEEDBACK_LOG=/var/lib/paw-helper/feedback.jsonl
 # PAW model cache (persists across restarts) and optional API key.
 Environment=PAW_CACHE_DIR=/var/lib/paw-helper/paw-cache
 # Environment=PAW_API_KEY=paw_sk_...
+# Optional: cache identical (page, query) answers for N seconds to absorb traffic
+# bursts (a launch/demo). Answers are deterministic, so this is behavior-preserving.
+# Environment=HELPER_CACHE_TTL_S=60
 ExecStart=/opt/paw-helper/venv/bin/paw-helper serve --host 127.0.0.1 --port 8088
 Restart=on-failure
 RestartSec=3

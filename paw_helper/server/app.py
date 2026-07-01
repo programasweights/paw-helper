@@ -25,18 +25,23 @@ Env:
                           (default: <helper>/feedback.jsonl)
   HELPER_QUERY_LOG        path to append per-question JSONL for review
                           (default: <helper>/queries.jsonl)
+  HELPER_CACHE_TTL_S      seconds to cache identical (page, query) answers
+                          (default: 0 = disabled; set e.g. 60 to harden for bursts)
+  HELPER_CACHE_MAX        max cached entries (default: 512)
 """
 
 import datetime
 import json
 import os
 import pathlib
+import re
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from .. import cache as cache_mod
 from .. import common, pipeline
 
 # Content pack dir comes from PAW_HELPER_CONTENT (common resolves it). Single shared
@@ -66,6 +71,19 @@ STATIC_DIR = pathlib.Path(__file__).resolve().parent / "static"
 
 QUERY_LOG = os.environ.get("HELPER_QUERY_LOG", str(common.CONTENT_DIR / "queries.jsonl"))
 
+# Optional short-TTL response cache (off unless HELPER_CACHE_TTL_S > 0). Answers are
+# deterministic, so caching identical (page, query) for a few seconds absorbs bursts
+# (a launch/demo asks the same questions repeatedly) without changing behavior.
+_CACHE = cache_mod.TTLCache(
+    ttl_s=float(os.environ.get("HELPER_CACHE_TTL_S", "0") or 0),
+    max_entries=int(os.environ.get("HELPER_CACHE_MAX", "512") or 512),
+)
+
+
+def _cache_key(query: str, page: str) -> str:
+    norm = re.sub(r"\s+", " ", query.strip().lower())
+    return f"{page}\x00{norm}"
+
 
 @app.get("/widget.js")
 def widget_js() -> FileResponse:
@@ -86,7 +104,7 @@ def widget_js() -> FileResponse:
     )
 
 
-def _log_query(query: str, page: str, meta: dict, origin: str | None = None) -> None:
+def _log_query(query: str, page: str, meta: dict, origin: str | None = None, cached: bool = False) -> None:
     """Append one JSONL line per question so we can review and polish on real usage.
 
     Deliberately stores no IP/identifier (public site, minimize PII). The query
@@ -111,6 +129,7 @@ def _log_query(query: str, page: str, meta: dict, origin: str | None = None) -> 
         "answer": result.get("text") or result.get("label"),
         "validator": meta.get("verdict"),                # yes/no for the freeform path
         "fallback": rtype == "none",                     # the polish targets
+        "cached": cached,                                # served from the TTL cache (no infer)
     }
     try:
         with open(QUERY_LOG, "a", encoding="utf-8") as f:
@@ -131,8 +150,17 @@ def ask(req: AskRequest, request: Request) -> dict:
     query = req.query.strip()
     if len(query) < 3:
         return {"type": "none"}
-    meta = PIPE.run(query, page=req.page or "site")
-    _log_query(query, req.page or "site", meta, origin=request.headers.get("origin"))
+    page = req.page or "site"
+    origin = request.headers.get("origin")
+    key = _cache_key(query, page)
+    cached_meta = _CACHE.get(key)
+    if cached_meta is not None:
+        # Still log (so traffic analytics stay complete), but skip the inference calls.
+        _log_query(query, page, cached_meta, origin=origin, cached=True)
+        return cached_meta["result"]
+    meta = PIPE.run(query, page=page)
+    _CACHE.set(key, meta)
+    _log_query(query, page, meta, origin=origin)
     return meta["result"]
 
 
