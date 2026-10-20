@@ -203,6 +203,38 @@ paw-helper ingest --content mypack /path/to/queries.jsonl \
 near-duplicates, intent grouping, labels, and rubrics are deliberately manual
 eyeballing steps.
 
+## Citation
+
+Paw-helper is the website-assistant application described in [Section 6.1 of Compile by Training](https://arxiv.org/html/2609.04199v1#S6.SS1). If you use it in research, cite Compile by Training and Program-as-Weights, the underlying programming paradigm.
+
+**[Compile by Training: Turning Natural-Language Specifications into Local Neural Functions](https://arxiv.org/abs/2609.04199)**
+
+```bibtex
+@misc{paw_2609_04199,
+  title = {{Compile by Training: Turning Natural-Language Specifications into Local Neural Functions}},
+  author = {Deng, Yuntian and Nie, Pengyu and Shieber, Stuart},
+  year = {2026},
+  note = {arXiv preprint},
+  eprint = {2609.04199},
+  archivePrefix = {arXiv},
+  url = {https://arxiv.org/abs/2609.04199}
+}
+```
+
+**[Program-as-Weights: A Programming Paradigm for Fuzzy Functions](https://arxiv.org/abs/2607.02512)**
+
+```bibtex
+@misc{paw_2607_02512,
+  title = {{Program-as-Weights: A Programming Paradigm for Fuzzy Functions}},
+  author = {Zhang, Wentao and Hotsko, Liliana and Kim, Woojeong and Nie, Pengyu and Shieber, Stuart and Deng, Yuntian},
+  year = {2026},
+  note = {arXiv preprint},
+  eprint = {2607.02512},
+  archivePrefix = {arXiv},
+  url = {https://arxiv.org/abs/2607.02512}
+}
+```
+
 ## License
 
 MIT - see [LICENSE](LICENSE).
