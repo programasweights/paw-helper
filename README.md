@@ -210,13 +210,11 @@ Paw-helper is the website-assistant application described in [Section 6.1 of Com
 **[Compile by Training: Turning Natural-Language Specifications into Local Neural Functions](https://arxiv.org/abs/2609.04199)**
 
 ```bibtex
-@misc{paw_2609_04199,
+@inproceedings{paw_2609_04199,
   title = {{Compile by Training: Turning Natural-Language Specifications into Local Neural Functions}},
   author = {Deng, Yuntian and Nie, Pengyu and Shieber, Stuart},
+  booktitle = {EMNLP 2026 System Demonstrations},
   year = {2026},
-  note = {arXiv preprint},
-  eprint = {2609.04199},
-  archivePrefix = {arXiv},
   url = {https://arxiv.org/abs/2609.04199}
 }
 ```
